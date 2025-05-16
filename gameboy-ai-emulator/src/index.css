@@ -1,0 +1,45 @@
+/* Add tailwind base styles */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* General styles */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #121212;
+  color: #f0f0f0;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Anti-flicker styles for rendering stability */
+.anti-flicker {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000;
+  will-change: transform;
+}
+
+/* Remove transition effects that might contribute to flickering */
+.no-transitions * {
+  transition: none !important;
+}
+
+/* Force hardware acceleration for panel containers */
+.panel-container {
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+}
+
+/* Prevent text layer flickering */
+.text-content {
+  -webkit-font-smoothing: subpixel-antialiased;
+}

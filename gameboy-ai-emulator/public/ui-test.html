@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Boy AI Emulator Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a2e;
+            color: #fff;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        header {
+            background-color: #16213e;
+            width: 100%;
+            padding: 1rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        h1 {
+            color: #4d79ff;
+            margin: 0;
+        }
+        
+        .container {
+            max-width: 800px;
+            width: 100%;
+            padding: 0 1rem;
+        }
+        
+        .card {
+            background-color: #0f3460;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        h2 {
+            color: #4d79ff;
+            margin-top: 0;
+        }
+        
+        button {
+            background-color: #4d79ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        button:hover {
+            background-color: #2d5ce0;
+        }
+        
+        .mock-status {
+            background-color: #16213e;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .status-item {
+            margin-bottom: 0.5rem;
+        }
+        
+        .status-label {
+            font-weight: bold;
+            color: #b8c2cc;
+        }
+        
+        .status-value {
+            color: #fff;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        
+        .badge-active {
+            background-color: #22c55e;
+            color: #dcfce7;
+        }
+        
+        .badge-inactive {
+            background-color: #6b7280;
+            color: #f3f4f6;
+        }
+        
+        .badge-error {
+            background-color: #ef4444;
+            color: #fee2e2;
+        }
+        
+        .thought-bubble {
+            background-color: #1e293b;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 0.5rem;
+            border-left: 4px solid #4d79ff;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Game Boy AI Emulator Test UI</h1>
+    </header>
+    
+    <div class="container">
+        <div class="card">
+            <h2>Mock AI Controls</h2>
+            <p>Use these buttons to simulate different AI responses and test the UI display</p>
+            
+            <button onclick="simulateAIThought('I see the player character needs to jump over an obstacle, pressing A button')">Simulate Jump (A)</button>
+            <button onclick="simulateAIThought('The player should move right to approach the next platform', 'right')">Simulate Right</button>
+            <button onclick="simulateAIThought('I should select the first menu option by pressing up and then A', 'up')">Simulate Menu Nav (Up)</button>
+            <button onclick="simulateAIThought('No action needed at this moment', 'none')">Simulate None</button>
+            <button onclick="simulateError('Failed to analyze game screen')">Simulate Error</button>
+        </div>
+        
+        <div class="card">
+            <h2>Status Display</h2>
+            <p>This is what the Status Display component should look like with AI thoughts</p>
+            
+            <div class="mock-status">
+                <div class="status-item">
+                    <span class="status-label">Game:</span>
+                    <span class="status-value" id="game-title">Super Mario Land</span>
+                </div>
+                
+                <div class="status-item">
+                    <span class="status-label">Emulator:</span>
+                    <span class="badge" style="background-color: #22c55e;" id="emulator-status">Running</span>
+                </div>
+                
+                <div class="status-item">
+                    <span class="status-label">AI Control:</span>
+                    <span class="badge badge-active" id="ai-status">Active</span>
+                </div>
+                
+                <div class="status-item" id="ai-action-container">
+                    <span class="status-label">Last AI Action:</span>
+                    <span class="status-value" id="ai-action">NONE</span>
+                </div>
+                
+                <div class="status-item" id="ai-thought-container">
+                    <span class="status-label">AI Thought Process:</span>
+                    <div class="thought-bubble" id="ai-thought">
+                        "I see the player character needs to jump over an obstacle, pressing A button"
+                    </div>
+                </div>
+                
+                <div class="status-item" id="error-container" style="display: none;">
+                    <span class="status-label" style="color: #ef4444;">Error:</span>
+                    <span class="status-value" style="color: #fee2e2;" id="error-message"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function simulateAIThought(thought, action = 'a') {
+            // Update the UI to show the AI thought
+            document.getElementById('ai-thought').textContent = `"${thought}"`;
+            document.getElementById('ai-action').textContent = action.toUpperCase();
+            
+            // Show the thought and action containers
+            document.getElementById('ai-thought-container').style.display = 'block';
+            document.getElementById('ai-action-container').style.display = 'block';
+            
+            // Hide the error container
+            document.getElementById('error-container').style.display = 'none';
+            
+            // Update AI status
+            document.getElementById('ai-status').className = 'badge badge-active';
+            document.getElementById('ai-status').textContent = 'Active';
+            
+            console.log(`AI Thought: ${thought}`);
+            console.log(`AI Action: ${action}`);
+        }
+        
+        function simulateError(errorMessage) {
+            // Show the error message
+            document.getElementById('error-message').textContent = errorMessage;
+            document.getElementById('error-container').style.display = 'block';
+            
+            // Update AI status
+            document.getElementById('ai-status').className = 'badge badge-error';
+            document.getElementById('ai-status').textContent = 'Error';
+            
+            console.log(`Error: ${errorMessage}`);
+        }
+    </script>
+</body>
+</html>

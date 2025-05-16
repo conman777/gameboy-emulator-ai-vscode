@@ -1,0 +1,238 @@
+import axios from 'axios';
+import { GameBoyButton } from '../types';
+
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';
+
+interface OpenRouterResponse {
+  choices: {
+    message: {
+      content: string;
+    };
+  }[];
+}
+
+interface OpenRouterModel {
+  id: string;
+  name: string;
+  context_length?: number;
+  pricing?: {
+    prompt: number;
+    completion: number;
+  };
+  capabilities?: string[];
+  features?: string[];  // Some APIs use "features" instead of "capabilities"
+  vision?: boolean;     // Some APIs have a direct "vision" flag
+}
+
+export const getGameAction = async (
+  base64ImageData: string,
+  modelName: string,
+  apiKey: string
+): Promise<{ action: GameBoyButton | 'none' | 'error'; message?: string }> => {
+  console.log(`Requesting action from OpenRouter model: ${modelName}`);
+  
+  if (!modelName || !apiKey) {
+    return { action: 'error', message: 'Model name and API key are required.' };
+  }
+  
+  try {
+    const response = await axios.post(
+      OPENROUTER_API_URL,
+      {
+        model: modelName,
+        messages: [
+          {
+            role: 'system',
+            content: `You are an AI controlling a Game Boy. You will be shown screenshots of the game screen.
+Analyze the image and respond with ONLY ONE of the following button presses: UP, DOWN, LEFT, RIGHT, A, B, START, SELECT, or NONE.
+The button you choose should be the most appropriate action for the current game state.
+Consider: What is happening in the game? What would a human player do? What button would advance or improve the game state?
+Respond with ONLY the button name, nothing else.`
+          },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'What button should I press for this Game Boy screen?' },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/png;base64,${base64ImageData}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 50
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'Game Boy AI Emulator'
+        }
+      }
+    );
+    
+    const content = response.data.choices[0]?.message?.content?.trim().toUpperCase() || '';
+    console.log('AI response:', content);
+    
+    // Map the response to a Game Boy button
+    if (content.includes('UP')) return { action: 'UP' };
+    if (content.includes('DOWN')) return { action: 'DOWN' };
+    if (content.includes('LEFT')) return { action: 'LEFT' };
+    if (content.includes('RIGHT')) return { action: 'RIGHT' };
+    if (content.includes('A')) return { action: 'A' };
+    if (content.includes('B')) return { action: 'B' };
+    if (content.includes('START')) return { action: 'START' };
+    if (content.includes('SELECT')) return { action: 'SELECT' };
+    if (content.includes('NONE')) return { action: 'none' };
+    
+    // If we couldn't parse the response, return none
+    return { action: 'none', message: `Could not parse AI response: ${content}` };
+  } catch (error: any) {
+    console.error('Error getting game action from AI:', error);
+    
+    let message = 'An error occurred while getting AI action.';
+    
+    if (error.response?.status === 401) {
+        message = 'Invalid OpenRouter API Key.';
+    } else if (error.response?.status === 400) {
+        message = 'Bad request. Model may not support image input.';
+    } else if (error.response?.status === 402) {
+        message = 'Payment required. Check your OpenRouter account balance.';
+    } else if (error.response?.status === 429) {
+        message = 'Rate limit exceeded. Please try again later.';
+    }
+    
+    return { action: 'error', message };
+  }
+};
+
+/**
+ * Fetch available models from OpenRouter
+ * Only returns models that support image input for the Game Boy AI control
+ */
+export const getAvailableModels = async (apiKey: string): Promise<OpenRouterModel[]> => {
+  if (!apiKey) {
+    console.error('Cannot fetch models: API key is missing');
+    return [];
+  }
+  
+  console.log('Fetching models from OpenRouter...');
+  
+  try {
+    const response = await axios.get(OPENROUTER_MODELS_URL, {
+      headers: { 
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Game Boy AI Emulator',
+      }
+    });
+    
+    console.log('OpenRouter API response:', response.data);
+    
+    // Handle different response formats from OpenRouter
+    let modelsData: any[] = [];
+    
+    if (response.data.data && Array.isArray(response.data.data)) {
+      modelsData = response.data.data;
+    } else if (Array.isArray(response.data)) {
+      modelsData = response.data;
+    } else {
+      console.error('Unexpected response format from OpenRouter models API:', response.data);
+      // Try to extract models if possible
+      if (typeof response.data === 'object') {
+        const possibleModels = Object.values(response.data).find(val => Array.isArray(val));
+        if (possibleModels) {
+          modelsData = possibleModels as any[];
+          console.log('Found potential models array:', modelsData.length);
+        }
+      }
+      
+      if (modelsData.length === 0) {
+        return [];
+      }
+    }
+    
+    // Filter for models that support vision capabilities
+    console.log('Total models available:', modelsData.length);
+    
+    // Check the first few models to understand structure
+    if (modelsData.length > 0) {
+      console.log('Sample model object:', JSON.stringify(modelsData[0], null, 2));
+    }
+    
+    const supportedModels = modelsData
+      .filter((model: any) => {
+        // Check if the model has vision capabilities
+        // Different APIs might use different formats
+        const hasVision = (model.capabilities && 
+                          Array.isArray(model.capabilities) && 
+                          model.capabilities.includes('vision')) ||
+                          // Additional checks for different API response formats
+                          (model.features && 
+                           Array.isArray(model.features) && 
+                           model.features.includes('vision')) ||
+                          // Some models might have a "vision" property
+                          model.vision === true;
+        
+        if (!hasVision) {
+          console.log(`Model ${model.id || model.name} does not appear to support vision`);
+        }
+        
+        return hasVision;
+      })
+      .map((model: any) => {
+        // Extract model id - different APIs might use different property names
+        const id = model.id || model.model_id || model.model;
+        
+        // Extract model name with fallbacks
+        const name = model.name || model.model_name || model.id || 'Unknown Model';
+        
+        return {
+          id: id,
+          name: name,
+          context_length: model.context_length || model.contextLength || model.max_tokens || 4096,
+          pricing: model.pricing || { prompt: 0, completion: 0 },
+          capabilities: model.capabilities || [],
+          features: model.features || [],
+          vision: model.vision || false
+        };
+      });
+    
+    console.log('Models with vision support:', supportedModels.length);
+    return supportedModels;
+  } catch (error: any) {
+    console.error('Error fetching OpenRouter models:', error.response?.data || error.message);
+    return [];
+  }
+};
+
+/**
+ * Validates an OpenRouter API key
+ */
+export const validateApiKey = async (apiKey: string): Promise<boolean> => {
+  if (!apiKey) {
+    console.error('Cannot validate empty API key');
+    return false;
+  }
+  
+  console.log('Validating OpenRouter API key...');
+  
+  try {
+    const response = await axios.get(OPENROUTER_MODELS_URL, {
+      headers: { 
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Game Boy AI Emulator',
+      }
+    });
+    console.log('Validation response status:', response.status);
+    return response.status === 200;
+  } catch (error) {
+    console.error('API key validation error:', error);
+    return false;
+  }
+};

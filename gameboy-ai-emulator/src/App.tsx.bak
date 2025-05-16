@@ -1,0 +1,137 @@
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import './App.css';
+import { EmulatorProvider } from './context/EmulatorContext';
+import { AIProvider } from './context/AIContext';
+import EmulatorDisplay from './components/EmulatorDisplay';
+import Controls from './components/Controls';
+import ConfigPanel from './components/ConfigPanel';
+import StatusDisplay from './components/StatusDisplay';
+import LegalDisclaimer from './components/LegalDisclaimer';
+import AIConsole from './components/AIConsole';
+import { GameBoyButton } from './types';t, { useState, useCallback, useEffect, useRef } from 'react';
+import './App.css';
+import { EmulatorProvider } from './context/EmulatorContext';
+import EmulatorDisplay from './components/EmulatorDisplay';
+import Controls from './components/Controls';
+import ConfigPanel from './components/ConfigPanel';
+import StatusDisplay from './components/StatusDisplay';
+import LegalDisclaimer from './components/LegalDisclaimer';
+import AIController, { AIControllerHandle } from './components/AIController';
+import AIConsole from './components/AIConsole';
+import { GameBoyButton } from './types';
+
+
+const App: React.FC = () => {
+  // References for canvas
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
+  const aiControllerRef = useRef<{ handleCustomPrompt: (prompt: string) => Promise<void> }>(null);
+  
+  // Status states
+  const [romTitle, setRomTitle] = useState<string | null>(null);
+  const [emulatorStatus, setEmulatorStatus] = useState<'Idle' | 'No ROM' | 'Ready' | 'Running' | 'Paused' | 'Error'>('No ROM');
+  const [aiStatus, setAiStatus] = useState<'Inactive' | 'Active' | 'Error'>('Inactive');
+  const [lastAiAction, setLastAiAction] = useState<GameBoyButton | 'none' | null>(null);
+  const [aiThought, setAiThought] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // AI configuration
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiConfig, setAiConfig] = useState({
+    apiKey: '',
+    modelName: '',
+    captureInterval: 2000,
+    gameContext: ''
+  });
+
+  // Effect to update the state once the ref is populated
+  useEffect(() => {
+    if (canvasRef.current) {
+      setCanvasElement(canvasRef.current);
+    }
+  }, []);
+  
+  // Handler for AI configuration changes
+  const handleConfigChange = useCallback((config: {
+    apiKey: string,
+    modelName: string,
+    captureInterval: number,
+    gameContext: string
+  }) => {
+    setAiConfig(config);
+  }, []);
+  
+  // Handler for AI status changes from ConfigPanel
+  const handleAiStatusChange = useCallback((status: 'Inactive' | 'Active' | 'Error') => {
+    setAiStatus(status);
+    setAiEnabled(status === 'Active');
+  }, []);
+  
+  // Handler for custom prompts from AIConsole
+  const handleSendPrompt = useCallback((prompt: string) => {
+    if (aiControllerRef.current) {
+      aiControllerRef.current.handleCustomPrompt(prompt);
+    } else {
+      setErrorMessage('AI controller not ready');
+    }
+  }, []);
+
+  return (
+    <EmulatorProvider canvasElement={canvasElement}>
+      <div className="min-h-screen bg-gray-900 text-white flex flex-col p-6">
+        <h1 className="text-4xl font-bold mb-6 text-center text-indigo-400 drop-shadow-lg">Game Boy AI Emulator</h1>
+        
+        <div className="flex flex-col lg:flex-row gap-8 w-full max-w-7xl mx-auto">
+          {/* Left Column: Emulator Display and Controls */}
+          <div className="flex flex-col items-center space-y-6 flex-shrink-0 lg:w-1/2">
+            <EmulatorDisplay ref={canvasRef} />
+            <Controls 
+              onStatusChange={(status) => setEmulatorStatus(status)}
+              onRomTitleChange={(title) => setRomTitle(title)}
+              onError={(error) => setErrorMessage(error)}
+            />
+          </div>
+          
+          {/* Right Column: Config, Status, and AI */}
+          <div className="flex flex-col space-y-6 flex-grow lg:w-1/2">
+            <ConfigPanel 
+              onAiStatusChange={handleAiStatusChange}
+              onConfigChange={handleConfigChange}
+            />
+            <StatusDisplay 
+              romTitle={romTitle}
+              emulatorStatus={emulatorStatus}
+              aiStatus={aiStatus}
+              lastAiAction={lastAiAction}
+              errorMessage={errorMessage}
+              aiThought={aiThought}
+            />
+            <AIController 
+              ref={aiControllerRef}
+              onActionPerformed={(action: GameBoyButton | 'none' | null, thought?: string) => {
+                setLastAiAction(action);
+                if (thought) setAiThought(thought);
+              }}
+              onStatusChange={(status: 'Inactive' | 'Active' | 'Error') => setAiStatus(status)}
+              onError={(error: string | null) => setErrorMessage(error)}
+              onPromptResponse={(response: string) => setAiThought(response)}
+              enabled={aiEnabled}
+              config={aiConfig}
+            />
+            <LegalDisclaimer />
+          </div>
+        </div>
+        
+        {/* AI Console - Fixed at bottom right */}
+        <AIConsole 
+          isActive={aiStatus === 'Active'}
+          onSendPrompt={handleSendPrompt}
+          aiThought={aiThought}
+          lastAction={lastAiAction}
+        />
+      </div>
+    </EmulatorProvider>
+  );
+};
+
+export default App;

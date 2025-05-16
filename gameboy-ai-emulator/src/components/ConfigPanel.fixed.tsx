@@ -1,0 +1,436 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { getAvailableModels, validateApiKey, getAllModels } from '../services/OpenRouterService';
+import { OpenRouterModel } from '../types';
+
+interface ConfigPanelProps {
+  onAiStatusChange?: (status: 'Inactive' | 'Active' | 'Error') => void;
+  onConfigChange?: (config: {
+    apiKey: string,
+    modelName: string,
+    captureInterval: number,
+    gameContext: string
+  }) => void;
+}
+
+interface ModelOption {
+  id: string;
+  name: string;
+  hasVision?: boolean;
+}
+
+const ConfigPanel: React.FC<ConfigPanelProps> = ({ onAiStatusChange, onConfigChange }) => {
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('aiApiKey') || '');
+  const [modelName, setModelName] = useState(() => localStorage.getItem('aiModelName') || '');
+  const [isAiActive, setIsAiActive] = useState(false);
+  const [captureInterval, setCaptureInterval] = useState(() => {
+    const saved = localStorage.getItem('aiCaptureInterval');
+    return saved ? parseInt(saved) : 2000;
+  });
+  const [gameContext, setGameContext] = useState(() => localStorage.getItem('aiGameContext') || '');
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
+  const [allModels, setAllModels] = useState<ModelOption[]>([]);
+  const [modelSearchQuery, setModelSearchQuery] = useState('');
+  const [showVisionOnly, setShowVisionOnly] = useState(true);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [apiKeyStatus, setApiKeyStatus] = useState<'unchecked' | 'valid' | 'invalid'>('unchecked');
+  const [apiKeyMessage, setApiKeyMessage] = useState('');
+
+  // Default models that are known to support vision capabilities
+  const defaultVisionModels: ModelOption[] = [
+    { id: 'anthropic/claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', hasVision: true },
+    { id: 'anthropic/claude-3-sonnet-20240229-v1:0', name: 'Claude 3 Sonnet', hasVision: true },
+    { id: 'anthropic/claude-3-haiku-20240307-v1:0', name: 'Claude 3 Haiku', hasVision: true },
+    { id: 'openai/gpt-4o', name: 'GPT-4o', hasVision: true },
+    { id: 'openai/gpt-4-vision-preview', name: 'GPT-4 Vision Preview', hasVision: true },
+    { id: 'google/gemini-1.0-pro-vision-001', name: 'Google Gemini Pro Vision', hasVision: true },
+    { id: 'mistralai/mistral-large-latest', name: 'Mistral Large', hasVision: true },
+    { id: 'meta-llama/llama-3-70b-vision', name: 'Meta Llama 3-70B Vision', hasVision: true }
+  ];
+
+  // Validate API key when it changes
+  useEffect(() => {
+    if (apiKey) {
+      const validateKey = async () => {
+        setApiKeyStatus('unchecked');
+        setApiKeyMessage('Validating API key...');
+
+        // Defensive check and logging for validateApiKey
+        if (typeof validateApiKey === 'function') {
+          try {
+            const isValid = await validateApiKey(apiKey);
+            setApiKeyStatus(isValid ? 'valid' : 'invalid');
+            setApiKeyMessage(isValid ? 'API key is valid.' : 'Invalid API key.');
+          } catch (err) {
+            console.error("Error during API key validation call:", err);
+            setApiKeyStatus('invalid');
+            setApiKeyMessage('Error validating API key.');
+          }
+        } else {
+          // This block will execute if validateApiKey is not a function
+          console.error(
+            'validateApiKey is not a function at the time of call.',
+            'Type:', typeof validateApiKey,
+            'Value:', validateApiKey
+          );
+          // Attempt to dynamically import the module for further diagnostics
+          import('../services/OpenRouterService').then(module => {
+            console.log('Dynamically imported OpenRouterService module:', module);
+            console.log('validateApiKey in dynamically imported module:', module.validateApiKey);
+          }).catch(dynamicImportError => {
+            console.error('Error dynamically importing OpenRouterService:', dynamicImportError);
+          });
+
+          setApiKeyStatus('invalid');
+          setApiKeyMessage('Configuration error: API validation function is unavailable. Please try refreshing the page.');
+        }
+      };
+      validateKey();
+    } else {
+      setApiKeyStatus('unchecked');
+      setApiKeyMessage('');
+    }
+
+    // Always set default models so the dropdown is never empty
+    setAllModels(defaultVisionModels);
+    setAvailableModels(defaultVisionModels);
+  }, [apiKey]);
+
+  // Load available models when API key changes or is validated
+  useEffect(() => {
+    if (apiKey && apiKeyStatus === 'valid') {
+      const loadModels = async () => {
+        setIsLoadingModels(true);
+        try {
+          console.log('Fetching all models with API key');
+          // Get all models from OpenRouter
+          const allModelsResult: OpenRouterModel[] = await getAllModels(apiKey);
+          console.log('Loaded all models:', allModelsResult.length, 'from OpenRouter API');
+          
+          // Also get vision-capable models as a reference
+          const visionModels: OpenRouterModel[] = await getAvailableModels(apiKey);
+          console.log('Loaded vision models:', visionModels.length, 'from OpenRouter API');
+          
+          if (allModelsResult && allModelsResult.length > 0) {
+            // Sort the models by name for better organization
+            allModelsResult.sort((a, b) => {
+              // Sort by provider first
+              const providerA = a.id.split('/')[0];
+              const providerB = b.id.split('/')[0];
+              if (providerA !== providerB) {
+                return providerA.localeCompare(providerB);
+              }
+              // Then by model name
+              return a.name.localeCompare(b.name);
+            });
+            
+            // Create model options from the returned models
+            // and mark vision-capable models
+            const modelOptions: ModelOption[] = allModelsResult.map((model: OpenRouterModel) => ({
+              id: model.id,
+              name: model.name,
+              hasVision: model.hasVision || visionModels.some(vm => vm.id === model.id)
+            }));
+            console.log('Created model options:', modelOptions.length);
+            setAllModels(modelOptions);
+            
+            // Filter to just show vision models initially since this is for a GameBoy emulator
+            const visionModelOptions = modelOptions.filter(model => model.hasVision);
+            setAvailableModels(visionModelOptions);
+            
+            // If we have models but none selected, select the first one
+            if ((!modelName || modelName === '') && visionModelOptions.length > 0) {
+              console.log('Setting default model:', visionModelOptions[0].id);
+              setModelName(visionModelOptions[0].id);
+            }
+          } else {
+            // No models found that match our criteria, set some default suggestions
+            console.log('No supported models found, adding fallback suggestions');
+            setAvailableModels(defaultVisionModels);
+            setAllModels(defaultVisionModels);
+          }
+        } catch (error) {
+          console.error('Failed to load models:', error);
+        } finally {
+          setIsLoadingModels(false);
+        }
+      };
+      loadModels();
+    }
+  }, [apiKey, apiKeyStatus, modelName]);
+
+  // Filter models based on search and vision capability
+  useEffect(() => {
+    if (allModels.length > 0) {
+      const filtered = allModels.filter(model => {
+        // Filter by vision capability if checked
+        if (showVisionOnly && !model.hasVision) {
+          return false;
+        }
+        
+        // Filter by search query if not empty
+        if (modelSearchQuery && !model.name.toLowerCase().includes(modelSearchQuery.toLowerCase()) && 
+            !model.id.toLowerCase().includes(modelSearchQuery.toLowerCase())) {
+          return false;
+        }
+        
+        return true;
+      });
+      
+      setAvailableModels(filtered);
+    }
+  }, [allModels, showVisionOnly, modelSearchQuery]);
+
+  // Save config to localStorage and inform parent components when config changes
+  useEffect(() => {
+    if (apiKey) localStorage.setItem('aiApiKey', apiKey);
+    if (modelName) localStorage.setItem('aiModelName', modelName);
+    localStorage.setItem('aiCaptureInterval', captureInterval.toString());
+    if (gameContext) localStorage.setItem('aiGameContext', gameContext);
+    
+    if (onConfigChange) {
+      onConfigChange({
+        apiKey,
+        modelName,
+        captureInterval,
+        gameContext
+      });
+    }
+  }, [apiKey, modelName, captureInterval, gameContext, onConfigChange]);
+
+  const toggleAI = useCallback(() => {
+    if (!apiKey || !modelName || apiKeyStatus !== 'valid') {
+      setApiKeyMessage('Valid API key and model required to activate AI.');
+      return;
+    }
+    
+    const newState = !isAiActive;
+    setIsAiActive(newState);
+    
+    if (onAiStatusChange) {
+      onAiStatusChange(newState ? 'Active' : 'Inactive');
+    }
+  }, [apiKey, modelName, apiKeyStatus, isAiActive, onAiStatusChange]);
+
+  return (
+    <div className="space-y-4 p-6 bg-indigo-900 bg-opacity-60 rounded-lg shadow-lg border border-indigo-700">
+      <h3 className="text-xl font-bold text-white mb-4 flex items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+        </svg>
+        AI Configuration
+      </h3>
+      
+      <div className="space-y-4">
+        <div>
+          <label htmlFor="api-key" className="block text-sm font-medium text-indigo-200 mb-1">
+            OpenRouter API Key
+          </label>
+          <div className="space-y-1">
+            <input 
+              id="api-key"
+              type="password" 
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Enter your OpenRouter API Key"
+              className={`w-full px-3 py-2 bg-indigo-800 bg-opacity-50 text-white 
+                border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50
+                ${apiKeyStatus === 'valid' ? 'border-green-500' : 
+                  apiKeyStatus === 'invalid' ? 'border-red-500' : 'border-indigo-600'}`}
+              disabled={isAiActive}
+            />
+            {apiKeyMessage && (
+              <p className={`text-xs italic ${
+                apiKeyStatus === 'valid' ? 'text-green-400' : 
+                apiKeyStatus === 'invalid' ? 'text-red-400' : 'text-indigo-300'
+              }`}>
+                {apiKeyMessage}
+              </p>
+            )}
+          </div>
+          
+          <div className="mt-1 text-xs text-indigo-300">
+            <a 
+              href="https://openrouter.ai/keys" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-indigo-300 hover:text-indigo-100 underline"
+            >
+              Get an OpenRouter API key
+            </a>
+          </div>
+        </div>
+        
+        <div>
+          <label htmlFor="model-select" className="block text-sm font-medium text-indigo-200 mb-1">
+            AI Model
+          </label>
+          
+          {isLoadingModels ? (
+            <div className="w-full px-3 py-2 bg-indigo-800 bg-opacity-50 text-indigo-300 border border-indigo-600 rounded-md">
+              Loading models... <span className="animate-pulse">⏳</span>
+            </div>
+          ) : availableModels.length > 0 ? (
+            <>
+              <div className="flex items-center mb-2">
+                <input 
+                  id="vision-filter"
+                  type="checkbox"
+                  checked={showVisionOnly}
+                  onChange={(e) => setShowVisionOnly(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                  disabled={isAiActive}
+                />
+                <label htmlFor="vision-filter" className="ml-2 block text-sm text-indigo-200">
+                  Show vision-capable models only
+                </label>
+              </div>
+              
+              <div className="relative mb-2">
+                <input 
+                  type="text"
+                  value={modelSearchQuery}
+                  onChange={(e) => setModelSearchQuery(e.target.value)}
+                  placeholder="Search models by name or ID..."
+                  className="w-full px-3 py-2 bg-indigo-800 bg-opacity-50 text-white border border-indigo-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                  disabled={isAiActive}
+                />
+                {modelSearchQuery && (
+                  <button
+                    onClick={() => setModelSearchQuery('')}
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-indigo-300 hover:text-indigo-100"
+                    aria-label="Clear search"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              
+              <select
+                id="model-select"
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+                className="w-full px-3 py-2 bg-indigo-800 bg-opacity-50 text-white border border-indigo-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                disabled={isAiActive}
+              >
+                <option value="">Select a model</option>
+                {(() => {
+                  // Group the models by provider
+                  const providers = new Map<string, ModelOption[]>();
+                  
+                  availableModels.forEach(model => {
+                    const provider = model.id.split('/')[0] || 'Unknown';
+                    if (!providers.has(provider)) {
+                      providers.set(provider, []);
+                    }
+                    providers.get(provider)!.push(model);
+                  });
+                  
+                  // Create option groups for each provider
+                  return Array.from(providers.entries()).map(([provider, models]) => (
+                    <optgroup key={provider} label={provider.charAt(0).toUpperCase() + provider.slice(1)}>
+                      {models.map(model => (
+                        <option key={model.id} value={model.id}>
+                          {model.name} {model.hasVision ? ' (Vision)' : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ));
+                })()}
+              </select>
+              
+              <p className="text-xs mt-2 text-indigo-300">
+                {availableModels.length} models available. 
+                {showVisionOnly ? ' Showing vision-capable models only.' : ' Showing all models.'}
+              </p>
+            </>
+          ) : (
+            <div className="space-y-1">
+              <div className={`w-full px-3 py-2 bg-indigo-800 bg-opacity-50 ${apiKeyStatus === 'valid' ? 'text-yellow-300 border-yellow-600' : 'text-indigo-300 border-indigo-600'} border rounded-md`}>
+                {apiKeyStatus === 'valid' 
+                  ? 'No models found. Please enter a model ID manually:'
+                  : 'Enter a valid API key to load models or enter a model ID manually:'}
+              </div>
+              <input 
+                id="model-name"
+                type="text" 
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+                placeholder="e.g., anthropic/claude-3-opus-20240229-v1:0" 
+                className="w-full mt-2 px-3 py-2 bg-indigo-800 bg-opacity-50 text-white border border-indigo-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                disabled={isAiActive}
+              />
+              <p className="text-xs italic text-indigo-300 mt-1">
+                <a 
+                  href="https://openrouter.ai/models" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-indigo-300 hover:text-indigo-100 underline"
+                >
+                  Browse available models on OpenRouter
+                </a>
+              </p>
+            </div>
+          )}
+        </div>
+        
+        <div>
+          <label htmlFor="capture-interval" className="block text-sm font-medium text-indigo-200 mb-1">
+            Capture Interval (ms)
+          </label>
+          <input 
+            id="capture-interval"
+            type="number" 
+            min="500"
+            max="10000"
+            step="100"
+            value={captureInterval}
+            onChange={(e) => setCaptureInterval(parseInt(e.target.value))}
+            className="w-full px-3 py-2 bg-indigo-800 bg-opacity-50 text-white border border-indigo-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+            disabled={isAiActive}
+          />
+          <p className="text-xs mt-1 text-indigo-300">
+            Lower values make the AI respond faster but use more API calls.
+          </p>
+        </div>
+        
+        <div>
+          <label htmlFor="game-context" className="block text-sm font-medium text-indigo-200 mb-1">
+            Game Context
+          </label>
+          <textarea 
+            id="game-context"
+            value={gameContext}
+            onChange={(e) => setGameContext(e.target.value)}
+            placeholder="Provide optional context about the game to help the AI (e.g., game title, goals, controls)"
+            className="w-full px-3 py-2 bg-indigo-800 bg-opacity-50 text-white border border-indigo-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+            rows={3}
+            disabled={isAiActive}
+          />
+          <p className="text-xs mt-1 text-indigo-300">
+            Adding game-specific context helps the AI make better decisions.
+          </p>
+        </div>
+        
+        <div className="flex items-center justify-between pt-2">
+          <span className="text-sm font-medium text-indigo-200">AI Control</span>
+          <button
+            onClick={toggleAI}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors
+                      ${!apiKey || !modelName || apiKeyStatus !== 'valid'
+                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
+                        : isAiActive 
+                          ? 'bg-red-600 text-white hover:bg-red-700' 
+                          : 'bg-green-600 text-white hover:bg-green-700'}`}
+            disabled={!apiKey || !modelName || apiKeyStatus !== 'valid'}
+          >
+            {isAiActive ? 'Deactivate AI' : 'Activate AI'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ConfigPanel;

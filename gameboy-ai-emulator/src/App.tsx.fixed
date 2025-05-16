@@ -1,0 +1,314 @@
+// Updated App.tsx with AIConsole integration
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import './App.css';
+import { EmulatorProvider } from './context/EmulatorContext';
+import EmulatorDisplay from './components/EmulatorDisplay';
+import Controls from './components/Controls';
+import ConfigPanel from './components/ConfigPanel';
+import StatusDisplay from './components/StatusDisplay';
+import LegalDisclaimer from './components/LegalDisclaimer';
+import AIController from './components/AIController';
+// Using renamed component
+import GameAIConsole from './components/GameAIConsole';
+import { GameBoyButton } from './types';
+import { sendCustomPrompt } from './services/AIService';
+import KnowledgeBaseView from './components/KnowledgeBaseView';
+import KnowledgeBaseButton from './components/KnowledgeBaseButton';
+import NavigationPanel from './components/NavigationPanel';
+import { getAllKnowledgeEntries, getAllNavigationPoints } from './services/KnowledgeBaseService';
+import { executeNavigationSequence } from './services/NavigationService';
+
+const App: React.FC = () => {
+  // References for canvas
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
+  
+  // Status states
+  const [romTitle, setRomTitle] = useState<string | null>(null);
+  const [emulatorStatus, setEmulatorStatus] = useState<'Idle' | 'No ROM' | 'Ready' | 'Running' | 'Paused' | 'Error'>('No ROM');
+  const [aiStatus, setAiStatus] = useState<'Inactive' | 'Active' | 'Error'>('Inactive');
+  const [lastAiAction, setLastAiAction] = useState<GameBoyButton | 'none' | null>(null);
+  const [aiThought, setAiThought] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // Track the last 10 AI button presses
+  const [lastTenActions, setLastTenActions] = useState<(GameBoyButton | 'none')[]>([]);
+  
+  // AI configuration
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiConfig, setAiConfig] = useState({
+    apiKey: '',
+    modelName: '',
+    captureInterval: 2000,
+    gameContext: ''
+  });
+  
+  // Knowledge base and navigation states
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState(false);
+  const [knowledgeCount, setKnowledgeCount] = useState(0);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [navigationStep, setNavigationStep] = useState<number | null>(null);
+  const [navigationTotal, setNavigationTotal] = useState<number | null>(null);
+  
+  // Emulator instance reference - not typed perfectly but works for our needs
+  const emulatorRef = useRef<any>(null);
+  
+  // Effect to update the state once the ref is populated
+  useEffect(() => {
+    if (canvasRef.current) {
+      setCanvasElement(canvasRef.current);
+    }
+  }, []);
+  
+  // Effect to update knowledge count
+  useEffect(() => {
+    const entries = getAllKnowledgeEntries();
+    const navPoints = getAllNavigationPoints();
+    setKnowledgeCount(entries.length + navPoints.length);
+  }, [aiThought, lastAiAction]); // Update when AI generates new thoughts
+  
+  // Handler for AI configuration changes
+  const handleConfigChange = useCallback((config: {
+    apiKey: string,
+    modelName: string,
+    captureInterval: number,
+    gameContext: string
+  }) => {
+    setAiConfig(config);
+  }, []);
+  
+  // Handler for AI status changes from ConfigPanel
+  const handleAiStatusChange = useCallback((status: 'Inactive' | 'Active' | 'Error') => {
+    setAiStatus(status);
+    setAiEnabled(status === 'Active');
+  }, []);
+  
+  // Handler for custom prompts from the AIConsole
+  const handleSendPrompt = useCallback(async (prompt: string) => {
+    if (aiStatus !== 'Active' || !aiConfig.apiKey || !aiConfig.modelName) {
+      setErrorMessage('AI not active or missing configuration');
+      return;
+    }
+    
+    try {
+      const emulator = emulatorRef.current;
+      if (!emulator) {
+        setErrorMessage('Emulator not available');
+        return;
+      }
+      
+      // Get screenshot
+      let imageData: string | null = null;
+      if (typeof emulator.captureScreenshot === 'function') {
+        imageData = emulator.captureScreenshot();
+      } else if (typeof emulator.getScreenDataAsBase64 === 'function') {
+        imageData = await emulator.getScreenDataAsBase64();
+      }
+      
+      if (!imageData) {
+        setErrorMessage('Failed to capture game screen');
+        return;
+      }
+      
+      // Send the prompt to AI
+      const response = await sendCustomPrompt(
+        imageData, 
+        aiConfig.modelName, 
+        aiConfig.apiKey, 
+        prompt,
+        aiConfig.gameContext
+      );
+      
+      // Update the AI thought to show the response
+      setAiThought(response.aiThought);
+    } catch (error) {
+      console.error('Error sending custom prompt:', error);
+      setErrorMessage(`Error sending prompt: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [aiStatus, aiConfig]);
+  
+  // Store emulator reference when it's created by EmulatorDisplay
+  const handleEmulatorCreated = useCallback((emulator: any) => {
+    emulatorRef.current = emulator;
+  }, []);
+  
+  // Toggle knowledge base visibility
+  const toggleKnowledgeBase = useCallback(() => {
+    setIsKnowledgeBaseOpen((prev: boolean) => !prev);
+  }, []);
+  
+  // Handler for navigation requests
+  const handleNavigationRequest = useCallback((directions: GameBoyButton[]) => {
+    if (!emulatorRef.current || !directions.length) {
+      setErrorMessage('Cannot navigate: Emulator not available or no directions provided');
+      return;
+    }
+    
+    if (isNavigating) {
+      setErrorMessage('Already navigating. Please wait for the current navigation to complete.');
+      return;
+    }
+    
+    try {
+      // Start the navigation sequence
+      setIsNavigating(true);
+      setNavigationStep(0);
+      setNavigationTotal(directions.length);
+      
+      // Get the navigation generator
+      const navigationGenerator = executeNavigationSequence(
+        emulatorRef.current,
+        directions,
+        500 // 500ms between actions
+      );
+      
+      // Function to execute each navigation step
+      const executeNextStep = () => {
+        const result = navigationGenerator.next();
+        
+        if (!result.done) {
+          const { button, stepNumber, totalSteps } = result.value;
+          
+          // Update the UI with the current step
+          setNavigationStep(stepNumber);
+          setNavigationTotal(totalSteps);
+          
+          // Schedule the next step
+          setTimeout(executeNextStep, 600); // Slightly longer than action delay
+        } else {
+          // Navigation complete
+          setIsNavigating(false);
+          setNavigationStep(null);
+          setNavigationTotal(null);
+          
+          // Set a success message
+          setErrorMessage('Navigation completed successfully!');
+          setTimeout(() => setErrorMessage(null), 3000);
+        }
+      };
+      
+      // Start the sequence
+      executeNextStep();
+    } catch (error: any) {
+      console.error('Navigation error:', error);
+      setErrorMessage(`Navigation error: ${error.message || 'Unknown error'}`);
+      setIsNavigating(false);
+      setNavigationStep(null);
+      setNavigationTotal(null);
+    }
+  }, [isNavigating]);
+
+  return (
+    <EmulatorProvider canvasElement={canvasElement}>
+      <div className="min-h-screen bg-gray-900 text-white flex flex-col p-6">
+        <h1 className="text-4xl font-bold mb-6 text-center text-indigo-400 drop-shadow-lg">Game Boy AI Emulator</h1>
+        
+        {/* Knowledge Base Modal */}
+        {isKnowledgeBaseOpen && (
+          <KnowledgeBaseView 
+            isVisible={isKnowledgeBaseOpen} 
+            onClose={toggleKnowledgeBase} 
+          />
+        )}
+        
+        <div className="flex flex-col lg:flex-row gap-10 w-full max-w-8xl mx-auto">
+          {/* Left Column: Emulator Display and Controls - increased width for larger Game Boy */}
+          <div className="flex flex-col items-center space-y-8 flex-shrink-0 lg:w-3/5">
+            <EmulatorDisplay 
+              ref={canvasRef} 
+              onEmulatorCreated={handleEmulatorCreated}
+            />
+            <Controls 
+              onStatusChange={(status) => setEmulatorStatus(status)}
+              onRomTitleChange={(title) => setRomTitle(title)}
+              onError={(error) => setErrorMessage(error)}
+            />
+            
+            {/* Navigation Panel */}
+            {aiStatus === 'Active' && (
+              <NavigationPanel onRequestNavigate={handleNavigationRequest} />
+            )}
+            
+            {/* Knowledge Base Button */}
+            <div className="w-full flex justify-center mt-4">
+              <KnowledgeBaseButton 
+                onClick={toggleKnowledgeBase} 
+                knowledgeCount={knowledgeCount} 
+              />
+            </div>
+          </div>
+          
+          {/* Right Column: Config, Status, and AI - adjusted width */}
+          <div className="flex flex-col space-y-6 flex-grow lg:w-2/5">
+            <ConfigPanel 
+              onAiStatusChange={handleAiStatusChange}
+              onConfigChange={handleConfigChange}
+            />
+            
+            {/* AI Thought Console Panel - Only visible when AI is active */}
+            {aiStatus === 'Active' && (
+              <div className="w-full">
+                <h3 className="text-lg font-semibold text-indigo-300 mb-2">AI Insights</h3>
+                <GameAIConsole 
+                  isActive={aiStatus === 'Active'}
+                  onSendPrompt={handleSendPrompt}
+                  aiThought={aiThought}
+                  lastAction={lastAiAction}
+                />
+              </div>
+            )}
+            
+            <StatusDisplay 
+              romTitle={romTitle}
+              emulatorStatus={emulatorStatus}
+              aiStatus={aiStatus}
+              lastAiAction={lastAiAction}
+              errorMessage={errorMessage}
+              aiThought={aiThought}
+              lastTenActions={lastTenActions}
+            />
+            
+            <AIController 
+              onActionPerformed={(action: GameBoyButton | 'none' | null, thought?: string) => {
+                setLastAiAction(action);
+                if (thought) setAiThought(thought);
+                
+                // Add to last 10 actions list if it's a valid button press
+                if (action && action !== null) {
+                  setLastTenActions(prev => {
+                    const newActions = [...prev];
+                    newActions.push(action);
+                    // Keep only the last 10 actions
+                    return newActions.slice(-10);
+                  });
+                }
+              }}
+              onStatusChange={(status: 'Inactive' | 'Active' | 'Error') => setAiStatus(status)}
+              onError={(error: string | null) => setErrorMessage(error)}
+              enabled={aiEnabled}
+              config={aiConfig}
+            />
+            
+            <LegalDisclaimer />
+          </div>
+        </div>
+        
+        {/* Navigation Status Indicator */}
+        {isNavigating && navigationStep !== null && navigationTotal !== null && (
+          <div className="fixed bottom-4 right-4 bg-indigo-800 text-white p-4 rounded-lg shadow-lg">
+            <p className="font-semibold">Auto-Navigation in Progress</p>
+            <p>Step {navigationStep + 1} of {navigationTotal}</p>
+            <div className="w-full bg-gray-700 h-2 mt-2 rounded-full overflow-hidden">
+              <div 
+                className="bg-indigo-400 h-full transition-all duration-300"
+                style={{ width: `${((navigationStep + 1) / navigationTotal) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
+      </div>
+    </EmulatorProvider>
+  );
+};
+
+export default App;

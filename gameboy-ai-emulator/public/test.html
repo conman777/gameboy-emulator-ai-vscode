@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Boy AI Testing</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #2b2b2b;
+            color: #ffffff;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .card {
+            background-color: #3a3a3a;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        button {
+            background-color: #4a5feb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #3a4fdb;
+        }
+        #screenshotResult, #apiResult {
+            margin-top: 10px;
+            min-height: 50px;
+            background-color: #242424;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow: auto;
+        }
+        #screenshotPreview {
+            margin-top: 10px;
+            max-width: 100%;
+            height: auto;
+            display: none;
+            border: 1px solid #5a5a5a;
+        }
+        .input-group {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            background-color: #242424;
+            color: white;
+            border: 1px solid #5a5a5a;
+            border-radius: 4px;
+        }
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h2>Game Boy AI Control Test</h2>
+            <p>This page helps test the Game Boy AI control functionality without having to run the full application.</p>
+        </div>
+
+        <div class="card">
+            <h3>1. Test Screenshot Capture</h3>
+            <p>Test the screenshot capture functionality.</p>
+            <button id="testScreenshot">Test Screenshot</button>
+            <div id="screenshotResult">Results will appear here...</div>
+            <img id="screenshotPreview" alt="Screenshot Preview" />
+        </div>
+
+        <div class="card">
+            <h3>2. Test AI Control</h3>
+            <div class="input-group">
+                <label for="apiKey">OpenRouter API Key:</label>
+                <input type="password" id="apiKey" placeholder="Enter your OpenRouter API key" />
+            </div>
+            
+            <div class="input-group">
+                <label for="modelName">Model Name:</label>
+                <input type="text" id="modelName" value="openai/gpt-4o-mini" placeholder="Enter model name" />
+            </div>
+            
+            <div class="input-group">
+                <label for="gameContext">Game Context:</label>
+                <textarea id="gameContext" placeholder="Enter additional game context to help the AI (e.g., This is Tetris. The goal is to create complete horizontal lines...)"></textarea>
+            </div>
+            
+            <button id="testAiWithoutContext">Test AI Without Context</button>
+            <button id="testAiWithContext">Test AI With Context</button>
+            <div id="apiResult">Results will appear here...</div>
+        </div>
+    </div>
+
+    <script>
+        // Mock implementation of the EmulatorWrapper for testing
+        class MockEmulatorWrapper {
+            constructor() {
+                // Create a canvas for testing
+                this.canvas = document.createElement('canvas');
+                this.canvas.width = 160;
+                this.canvas.height = 144;
+                const ctx = this.canvas.getContext('2d');
+                
+                // Draw a simple mock Game Boy screen
+                if (ctx) {
+                    // Background
+                    ctx.fillStyle = '#8bac0f'; // Classic Game Boy green
+                    ctx.fillRect(0, 0, 160, 144);
+                    
+                    // Some game elements
+                    ctx.fillStyle = '#0f380f'; // Darker green
+                    ctx.fillRect(40, 100, 20, 20); // Player
+                    ctx.fillRect(80, 80, 20, 20); // Enemy
+                    ctx.fillRect(120, 110, 20, 10); // Platform
+                    
+                    // UI elements
+                    ctx.fillStyle = '#306230';
+                    ctx.fillRect(10, 10, 50, 10); // Score
+                    ctx.fillRect(100, 10, 40, 10); // Lives
+                }
+            }
+            
+            captureScreenshot() {
+                try {
+                    const base64Image = this.canvas.toDataURL('image/png').split(',')[1];
+                    return base64Image;
+                } catch (error) {
+                    console.error("Error capturing screenshot:", error);
+                    return "";
+                }
+            }
+            
+            isReady() { return true; }
+            isRunning() { return true; }
+        }
+        
+        // Mock implementation of OpenRouterService for testing
+        async function mockGetGameAction(base64ImageData, modelName, apiKey, gameContext = '') {
+            // Check if we should actually call the API
+            const useRealApi = apiKey && apiKey.length > 10;
+            
+            if (useRealApi) {
+                try {
+                    const API_URL = 'https://openrouter.ai/api/v1';
+                    
+                    // Base system prompt
+                    let systemPrompt = 'You control a Game Boy. Analyze the screen and choose the best button to press. ';
+                    systemPrompt += 'The buttons are: UP (d-pad up), DOWN (d-pad down), LEFT (d-pad left), RIGHT (d-pad right), ';
+                    systemPrompt += 'A (primary action button), B (secondary action/cancel button), START (menu/pause), SELECT (secondary menu). ';
+                    
+                    // Add game context if provided
+                    if (gameContext) {
+                      systemPrompt += `Additional game context: ${gameContext} `;
+                    }
+                    
+                    systemPrompt += 'Respond with ONLY ONE of these buttons: UP, DOWN, LEFT, RIGHT, A, B, START, SELECT, or NONE if no action is needed.';
+                    
+                    const response = await fetch(`${API_URL}/chat/completions`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`,
+                            'HTTP-Referer': window.location.origin,
+                            'X-Title': 'Game Boy AI Emulator Test'
+                        },
+                        body: JSON.stringify({
+                            model: modelName,
+                            messages: [
+                                { 
+                                    role: 'system', 
+                                    content: systemPrompt
+                                },
+                                { 
+                                    role: 'user', 
+                                    content: [
+                                        { type: 'text', text: 'What button should I press for this Game Boy screen?' },
+                                        { type: 'image_url', image_url: { url: `data:image/png;base64,${base64ImageData}` } }
+                                    ]
+                                }
+                            ]
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        return { 
+                            action: 'error', 
+                            message: `API error: ${errorData.error?.message || response.statusText}`
+                        };
+                    }
+                    
+                    const data = await response.json();
+                    const aiResponse = data.choices[0]?.message?.content || '';
+                    
+                    // Process the AI's response to extract a valid button
+                    const buttonMap = {
+                        'UP': 'up',
+                        'DOWN': 'down',
+                        'LEFT': 'left',
+                        'RIGHT': 'right',
+                        'A': 'a',
+                        'B': 'b',
+                        'START': 'start',
+                        'SELECT': 'select',
+                        'NONE': 'none'
+                    };
+                    
+                    // Try to find a valid button in the response
+                    let extractedAction = 'none';
+                    for (const [buttonText, buttonValue] of Object.entries(buttonMap)) {
+                        if (aiResponse.includes(buttonText)) {
+                            extractedAction = buttonValue;
+                            break;
+                        }
+                    }
+                    
+                    return {
+                        action: extractedAction,
+                        message: aiResponse,
+                        rawResponse: data
+                    };
+                } catch (error) {
+                    return { 
+                        action: 'error', 
+                        message: `Error: ${error.message}`
+                    };
+                }
+            } else {                // Return mock data
+                return { 
+                    action: 'right', 
+                    message: 'I should move right to avoid the enemy and collect the power-up.\nRIGHT',
+                    aiThought: 'I should move right to avoid the enemy and collect the power-up.',
+                    isMock: true
+                };
+            }
+        }
+        
+        // Test functions
+        document.getElementById('testScreenshot').addEventListener('click', () => {
+            const resultElement = document.getElementById('screenshotResult');
+            const previewElement = document.getElementById('screenshotPreview');
+            
+            resultElement.textContent = 'Testing screenshot capture...';
+            
+            try {
+                const emulator = new MockEmulatorWrapper();
+                const base64Image = emulator.captureScreenshot();
+                
+                if (base64Image) {
+                    resultElement.textContent = `Screenshot captured successfully!\nBase64 data (first 50 chars): ${base64Image.substring(0, 50)}...`;
+                    
+                    // Show preview
+                    previewElement.src = `data:image/png;base64,${base64Image}`;
+                    previewElement.style.display = 'block';
+                } else {
+                    resultElement.textContent = 'Failed to capture screenshot!';
+                    previewElement.style.display = 'none';
+                }
+            } catch (error) {
+                resultElement.textContent = `Error during test: ${error.message}`;
+                previewElement.style.display = 'none';
+            }
+        });
+        
+        document.getElementById('testAiWithoutContext').addEventListener('click', async () => {
+            const resultElement = document.getElementById('apiResult');
+            const apiKey = document.getElementById('apiKey').value;
+            const modelName = document.getElementById('modelName').value || 'openai/gpt-4o-mini';
+            
+            resultElement.textContent = 'Testing AI without context...';
+            
+            try {
+                const emulator = new MockEmulatorWrapper();
+                const base64Image = emulator.captureScreenshot();
+                
+                const result = await mockGetGameAction(base64Image, modelName, apiKey);
+                
+                resultElement.textContent = `AI Response: ${JSON.stringify(result, null, 2)}`;
+            } catch (error) {
+                resultElement.textContent = `Error during test: ${error.message}`;
+            }
+        });
+        
+        document.getElementById('testAiWithContext').addEventListener('click', async () => {
+            const resultElement = document.getElementById('apiResult');
+            const apiKey = document.getElementById('apiKey').value;
+            const modelName = document.getElementById('modelName').value || 'openai/gpt-4o-mini';
+            const gameContext = document.getElementById('gameContext').value;
+            
+            resultElement.textContent = 'Testing AI with context...';
+            
+            try {
+                const emulator = new MockEmulatorWrapper();
+                const base64Image = emulator.captureScreenshot();
+                
+                const result = await mockGetGameAction(base64Image, modelName, apiKey, gameContext);
+                  resultElement.textContent = `AI Response with Context: ${JSON.stringify(result, null, 2)}`;
+                
+                // Display the thought in a more readable format
+                if (result.aiThought) {
+                    const thoughtElement = document.createElement('div');
+                    thoughtElement.className = 'mt-3 p-3 bg-indigo-900 rounded';
+                    thoughtElement.innerHTML = `<strong>AI Thought:</strong> <em>${result.aiThought}</em>`;
+                    resultElement.appendChild(thoughtElement);
+                }
+            } catch (error) {
+                resultElement.textContent = `Error during test: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>
