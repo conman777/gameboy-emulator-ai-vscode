@@ -34,61 +34,80 @@ export const useOpenRouterModels = (
     if (apiKey && apiKeyStatus === 'valid') {
       setIsLoadingModels(true);
       try {
-        console.log('Fetching all models with API key (from hook)');
+        // console.log('Fetching all models with API key (from hook)'); // Less verbose logging
         const fetchedModels: OpenRouterModel[] = await getAvailableModels(apiKey);
-        console.log('Loaded all models (from hook):', fetchedModels.length, 'from OpenRouter API');
+        // console.log('Loaded all models (from hook):', fetchedModels.length, 'from OpenRouter API'); // Less verbose logging
 
         if (fetchedModels && fetchedModels.length > 0) {
-          fetchedModels.sort((a, b) => {
+          // ... existing sorting and mapping ...
+          const mappedOptions: ModelOption[] = fetchedModels.map(mapOpenRouterToModelOption);
+          
+          mappedOptions.sort((a, b) => {
             const providerA = a.id.split('/')[0];
             const providerB = b.id.split('/')[0];
-            if (providerA !== providerB) {
-              return providerA.localeCompare(providerB);
-            }
+            if (providerA !== providerB) return providerA.localeCompare(providerB);
+            if (a.hasVision !== b.hasVision) return a.hasVision ? -1 : 1;
             return a.name.localeCompare(b.name);
           });
           
-          // Map all models and keep them in allModels
-          const mappedOptions: ModelOption[] = fetchedModels.map(mapOpenRouterToModelOption);
           setAllModels(mappedOptions);
 
-          // If no model is selected yet, select a vision model by default
-          if (!modelName) {
+          // Auto-select model logic - only if modelName is not already set or not in the new list
+          const currentModelExistsInNewList = mappedOptions.some(m => m.id === modelName);
+          if (!modelName || !currentModelExistsInNewList) {
             const visionModel = mappedOptions.find(m => m.hasVision);
             if (visionModel) {
               setModelName(visionModel.id);
             } else if (mappedOptions.length > 0) {
-              // Fall back to any model if no vision models
               setModelName(mappedOptions[0].id);
-            } else if (defaultVisionModels.length > 0) {
-              // Fall back to default models if API returned nothing
+            } 
+            // Removed fallback to defaultVisionModels here, as setAllModels(defaultVisionModels) covers it below
+          }
+        } else {
+          // console.log('No models returned from API (from hook), using default list'); // Less verbose logging
+          setAllModels(defaultVisionModels); // Use the stable defaultVisionModels reference
+          // If API fails and no model was selected, or selected model is not in defaults, pick first default
+          if (!modelName || !defaultVisionModels.some(m => m.id === modelName)) {
+            if (defaultVisionModels.length > 0) {
               setModelName(defaultVisionModels[0].id);
             }
           }
-        } else {
-          console.log('No models returned from API (from hook), using default list');
-          setAllModels(defaultVisionModels);
         }
       } catch (error) {
         console.error('Failed to load models (from hook):', error);
-        setAllModels(defaultVisionModels);
+        setAllModels(defaultVisionModels); // Use the stable defaultVisionModels reference
+        // If API fails and no model was selected, or selected model is not in defaults, pick first default
+        if (!modelName || !defaultVisionModels.some(m => m.id === modelName)) {
+          if (defaultVisionModels.length > 0) {
+            setModelName(defaultVisionModels[0].id);
+          }
+        }
       } finally {
         setIsLoadingModels(false);
       }
+    } else if (!apiKey || apiKeyStatus === 'invalid') {
+      // Clear models or set to default if API key is removed or becomes invalid
+      // console.log('API key invalid or empty (from hook), setting default models'); // Less verbose logging
+      setAllModels(defaultVisionModels); // Use the stable defaultVisionModels reference
+      if (defaultVisionModels.length > 0 && (!modelName || !defaultVisionModels.some(m => m.id === modelName))) {
+        setModelName(defaultVisionModels[0].id);
+      } else if (defaultVisionModels.length === 0) {
+        setModelName(''); // No models available
+      }
     }
-  }, [apiKey, apiKeyStatus, defaultVisionModels, modelName]);
+  }, [apiKey, apiKeyStatus, defaultVisionModels, modelName, setModelName]); // Added setModelName to dependencies
 
   useEffect(() => {
     loadModels();
-  }, [loadModels]); // API Key and status changes will trigger loadModels due to its own dependencies
+  }, [loadModels]);
 
-  // Effect for when API key becomes invalid or empty
-  useEffect(() => {
-    if (apiKeyStatus === 'invalid' || !apiKey) {
-      console.log('API key invalid or empty (from hook), setting default models');
-      setAllModels(defaultVisionModels);
-    }
-  }, [apiKey, apiKeyStatus, defaultVisionModels]);
+  // Effect for when API key becomes invalid or empty - This logic is now integrated into loadModels
+  // useEffect(() => {
+  //   if (apiKeyStatus === 'invalid' || !apiKey) {
+  //     console.log('API key invalid or empty (from hook), setting default models');
+  //     setAllModels(defaultVisionModels);
+  //   }
+  // }, [apiKey, apiKeyStatus, defaultVisionModels]);
 
   return { 
     allModels, 

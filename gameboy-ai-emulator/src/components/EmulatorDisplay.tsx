@@ -1,5 +1,6 @@
 import React, { forwardRef, useEffect, useRef } from "react";
 import { useEmulator } from "../context/EmulatorContext";
+import GhostFreeLayout from "./GhostFreeLayout";
 
 // Define props if needed
 interface EmulatorDisplayProps {
@@ -27,10 +28,9 @@ const EmulatorDisplay = forwardRef<HTMLCanvasElement, EmulatorDisplayProps>(
           onEmulatorCreated(emulator);
         }
       }
-    }, [emulator, onEmulatorCreated]);
-
-    return (
-      <div className="relative mx-auto">        {/* GameBoy-like frame - enlarged to accommodate 4x larger screen */}
+    }, [emulator, onEmulatorCreated]);    return (
+      <GhostFreeLayout className="relative mx-auto">        
+        {/* GameBoy-like frame - enlarged to accommodate 4x larger screen */}
         <div className="relative bg-gray-300 rounded-t-2xl rounded-b-xl p-8 pb-24 shadow-xl border-4 border-gray-400">
           {/* Logo */}
           <div className="absolute top-4 right-12 text-lg text-gray-600 font-bold">
@@ -71,10 +71,9 @@ const EmulatorDisplay = forwardRef<HTMLCanvasElement, EmulatorDisplayProps>(
           {/* Start/Select buttons - larger */}
           <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex space-x-8">
             <div className="w-16 h-3 bg-gray-500 rounded-full transform rotate-345"></div>
-            <div className="w-16 h-3 bg-gray-500 rounded-full transform rotate-345"></div>
-          </div>
+            <div className="w-16 h-3 bg-gray-500 rounded-full transform rotate-345"></div>          </div>
         </div>
-      </div>
+      </GhostFreeLayout>
     );
   }
 );

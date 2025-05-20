@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useEmulator } from "../context/EmulatorContext";
+import { saveRom, getRom, StoredRom } from "../services/StorageService"; // Added StoredRom import
 
 // Define the props interface
 interface ControlsProps {
@@ -23,7 +24,10 @@ const Controls: React.FC<ControlsProps> = ({
   const [romLoaded, setRomLoaded] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [status, setStatus] = useState<string>("No ROM Loaded");
-  const [romFile, setRomFile] = useState<File | null>(null);
+  // romFile state will now store the File object when a new file is selected,
+  // or a StoredRom-like object when loaded from DB, to hold name and trigger effects.
+  // The actual ArrayBuffer for the emulator will be handled directly.
+  const [romFile, setRomFile] = useState<File | {name: string} | null>(null); 
   
   // State for save/load functionality
   const [savedStates, setSavedStates] = useState<SavedState[]>([]);
@@ -51,12 +55,53 @@ const Controls: React.FC<ControlsProps> = ({
     } catch (error) {
       console.error('Error loading saved states:', error);
     }
-  }, []);
+
+    // Attempt to load ROM from IndexedDB on mount
+    const loadRomFromStorage = async () => {
+      if (!emulator) return;
+      try {
+        const storedRomData = await getRom(); // Renamed to avoid conflict with romFile state
+        if (storedRomData) {
+          // Create a File-like object for display and status purposes
+          setRomFile({ name: storedRomData.name }); 
+          // Use storedRomData.data directly for the emulator
+          const result = await emulator.loadROM(storedRomData.data);
+
+          if (result.success) {
+            setRomLoaded(true);
+            setStatus(`Loaded: ${result.title || storedRomData.name}`);
+            if (onRomTitleChange) onRomTitleChange(result.title || storedRomData.name);
+            updateStatus('Ready');
+            if (onError) onError(null);
+            console.log("ROM loaded from IndexedDB:", result.title || storedRomData.name);
+          } else {
+            console.warn("Failed to load ROM from IndexedDB:", result.message);
+            updateStatus('No ROM'); 
+            if (onRomTitleChange) onRomTitleChange(null);
+            if (onError) onError(result.message || "Failed to load ROM from storage");
+          }
+        } else {
+          updateStatus('No ROM');
+        }
+      } catch (err: any) {
+        console.error("Error loading ROM from IndexedDB:", err);
+        updateStatus('Error');
+        if (onRomTitleChange) onRomTitleChange(null);
+        if (onError) onError(err.message || "Error loading ROM from storage");
+      }
+    };
+
+    if (emulator) { // Ensure emulator is available before trying to load
+        loadRomFromStorage();
+    }
+  }, [emulator, onRomTitleChange, onError, updateStatus]); // Changed onStatusChange to updateStatus
+
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !emulator) return;
     
-    setRomFile(file);
+    setRomFile(file); // Store the full File object when selected by user
     
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -68,6 +113,8 @@ const Controls: React.FC<ControlsProps> = ({
         if (onRomTitleChange) onRomTitleChange(result.title || file.name);
         updateStatus('Ready');
         if (onError) onError(null); // Clear any previous errors
+        await saveRom(file.name, arrayBuffer); // Save ROM to IndexedDB with name and data
+        console.log("ROM saved to IndexedDB");
       } else {
         setRomLoaded(false);
         setStatus(result.message || "Failed to load ROM");

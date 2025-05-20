@@ -2,6 +2,31 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ModelOption } from '../types';
 import { useApiKeyValidation } from '../hooks/useApiKeyValidation';
 import { useOpenRouterModels } from '../hooks/useOpenRouterModels';
+import StablePanel from './StablePanel';
+import ModelSelectionModal from './ModelSelectionModal';
+
+// Define defaultVisionModels outside the component so it's a stable reference
+const defaultVisionModels: ModelOption[] = [
+  { id: 'openai/gpt-4o', name: 'GPT-4o', hasVision: true },
+  { id: 'openai/gpt-4-vision-preview', name: 'GPT-4 Vision Preview', hasVision: true },
+  { id: 'anthropic/claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', hasVision: true },
+  { id: 'anthropic/claude-3-sonnet-20240229-v1:0', name: 'Claude 3 Sonnet', hasVision: true },
+  { id: 'anthropic/claude-3-haiku-20240307-v1:0', name: 'Claude 3 Haiku', hasVision: true },
+  { id: 'google/gemini-1.0-pro-vision-001', name: 'Google Gemini Pro Vision', hasVision: true },
+  { id: 'google/gemini-pro-vision', name: 'Google Gemini Pro Vision', hasVision: true },
+  { id: 'mistralai/mistral-large-latest', name: 'Mistral Large', hasVision: true },
+  { id: 'mistralai/mistral-large-vision', name: 'Mistral Large Vision', hasVision: true },
+  { id: 'meta-llama/llama-3-70b-vision', name: 'Meta Llama 3-70B Vision', hasVision: true },
+  { id: 'meta-llama/llama-3-8b-vision', name: 'Meta Llama 3-8B Vision', hasVision: true },
+  { id: 'stability-ai/stable-diffusion-3-medium', name: 'Stable Diffusion 3 Medium', hasVision: true },
+  { id: 'perplexity/sonar-medium-online', name: 'Perplexity Sonar Medium Online', hasVision: true },
+  { id: 'perplexity/sonar-small-online', name: 'Perplexity Sonar Small Online', hasVision: true },
+  { id: 'deepseek/deepseek-vl-7b-chat', name: 'DeepSeek VL 7B Chat', hasVision: true },
+  { id: 'cohere/command-r-plus', name: 'Cohere Command R+', hasVision: true },
+  { id: 'anthropic/claude-2.1', name: 'Claude 2.1', hasVision: true },
+  { id: 'anthropic/claude-2.0', name: 'Claude 2.0', hasVision: true },
+  { id: 'openrouter/auto', name: 'OpenRouter Auto (Best Available)', hasVision: true }
+];
 
 interface ConfigPanelProps {
   onAiStatusChange?: (status: 'Inactive' | 'Active' | 'Error') => void;
@@ -13,7 +38,7 @@ interface ConfigPanelProps {
   }) => void;
 }
 
-// Use React.memo to prevent unnecessary re-renders
+// Use React.memo with custom comparison to prevent unnecessary re-renders
 const ConfigPanel: React.FC<ConfigPanelProps> = React.memo(({ onAiStatusChange, onConfigChange }) => {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('aiApiKey') || '');
   const [isAiActive, setIsAiActive] = useState(false);
@@ -22,32 +47,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = React.memo(({ onAiStatusChange, 
     return saved ? parseInt(saved) : 2000;
   });
   const [gameContext, setGameContext] = useState(() => localStorage.getItem('aiGameContext') || '');
-  const [modelSearchQuery, setModelSearchQuery] = useState('');
-  const [showVisionOnly, setShowVisionOnly] = useState(true);
-
-  // Default models that are known to support vision capabilities
-  // This list is passed to the useOpenRouterModels hook as a fallback.
-  const defaultVisionModels: ModelOption[] = [
-    { id: 'openai/gpt-4o', name: 'GPT-4o', hasVision: true },
-    { id: 'openai/gpt-4-vision-preview', name: 'GPT-4 Vision Preview', hasVision: true },
-    { id: 'anthropic/claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', hasVision: true },
-    { id: 'anthropic/claude-3-sonnet-20240229-v1:0', name: 'Claude 3 Sonnet', hasVision: true },
-    { id: 'anthropic/claude-3-haiku-20240307-v1:0', name: 'Claude 3 Haiku', hasVision: true },
-    { id: 'google/gemini-1.0-pro-vision-001', name: 'Google Gemini Pro Vision', hasVision: true },
-    { id: 'google/gemini-pro-vision', name: 'Google Gemini Pro Vision', hasVision: true },
-    { id: 'mistralai/mistral-large-latest', name: 'Mistral Large', hasVision: true },
-    { id: 'mistralai/mistral-large-vision', name: 'Mistral Large Vision', hasVision: true },
-    { id: 'meta-llama/llama-3-70b-vision', name: 'Meta Llama 3-70B Vision', hasVision: true },
-    { id: 'meta-llama/llama-3-8b-vision', name: 'Meta Llama 3-8B Vision', hasVision: true },
-    { id: 'stability-ai/stable-diffusion-3-medium', name: 'Stable Diffusion 3 Medium', hasVision: true },
-    { id: 'perplexity/sonar-medium-online', name: 'Perplexity Sonar Medium Online', hasVision: true },
-    { id: 'perplexity/sonar-small-online', name: 'Perplexity Sonar Small Online', hasVision: true },
-    { id: 'deepseek/deepseek-vl-7b-chat', name: 'DeepSeek VL 7B Chat', hasVision: true },
-    { id: 'cohere/command-r-plus', name: 'Cohere Command R+', hasVision: true },
-    { id: 'anthropic/claude-2.1', name: 'Claude 2.1', hasVision: true },
-    { id: 'anthropic/claude-2.0', name: 'Claude 2.0', hasVision: true },
-    { id: 'openrouter/auto', name: 'OpenRouter Auto (Best Available)', hasVision: true }
-  ];
+  const [showModelModal, setShowModelModal] = useState(false); // Added state for modal visibility
 
   const { apiKeyStatus, apiKeyMessage, setApiKeyMessage: setHookApiKeyMessage } = useApiKeyValidation(apiKey);
   
@@ -58,65 +58,11 @@ const ConfigPanel: React.FC<ConfigPanelProps> = React.memo(({ onAiStatusChange, 
     setModelName 
   } = useOpenRouterModels(apiKey, apiKeyStatus, defaultVisionModels);
 
-  // Local state for UI-filtered models, derived from hook's allModels
-  const [uiFilteredModels, setUiFilteredModels] = useState<ModelOption[]>([]);
-
-  // useEffect for API key validation and initial model loading are now handled by the custom hooks.
-
-  // REMOVED problematic useEffect that was here:
-  // // Handle manual model input - This will now use setAllModels from the hook
-  // useEffect(() => {
-  //   if (modelName && !allModels.some(model => model.id === modelName)) {
-  //     // ... (Previous logic that called setAllModels from the hook)
-  //   }
-  // }, [modelName, allModels, setAllModels]); // This effect is removed.
-
-  // ADDED: Create an augmented list of models using useMemo
-  // This list includes models from the hook and the current modelName if it's custom/not yet in the hook's list.
-  const augmentedModels = useMemo(() => {
-    let currentModels = allModels; // allModels is from the useOpenRouterModels hook
-    if (modelName && !currentModels.some(m => m.id === modelName)) {
-      const mightHaveVision =
-        modelName.toLowerCase().includes('gpt-4') ||
-        modelName.toLowerCase().includes('gpt4') ||
-        modelName.toLowerCase().includes('claude-3') ||
-        modelName.toLowerCase().includes('gemini') ||
-        modelName.toLowerCase().includes('llama-3') ||
-        modelName.toLowerCase().includes('vision');
-      
-      const customModel: ModelOption = {
-        id: modelName,
-        name: modelName.split('/').pop() || modelName, // Generate a display name
-        hasVision: mightHaveVision
-      };
-      // Add the custom/persisted model to a new array for augmentation
-      currentModels = [...currentModels, customModel];
-    }
-    return currentModels;
-  }, [modelName, allModels]);
-
-  // MODIFIED: Filter models based on search query and vision capability toggle, using augmentedModels
-  useEffect(() => {
-    if (augmentedModels.length > 0) { // Use augmentedModels
-      const filtered = augmentedModels.filter(model => { // Use augmentedModels
-        if (showVisionOnly && !model.hasVision) {
-          return false;
-        }
-        if (modelSearchQuery && !model.name.toLowerCase().includes(modelSearchQuery.toLowerCase()) && 
-            !model.id.toLowerCase().includes(modelSearchQuery.toLowerCase())) {
-          return false;
-        }
-        return true;
-      });
-      setUiFilteredModels(filtered);
-    } else {
-      setUiFilteredModels([]); // Ensure it's empty if augmentedModels is empty
-    }
-  }, [augmentedModels, showVisionOnly, modelSearchQuery]); // Dependency changed to augmentedModels
-
-  // Save config to localStorage and inform parent components when config changes
+  // useEffect for saving config remains the same
   useEffect(() => {
     if (apiKey) localStorage.setItem('aiApiKey', apiKey);
+    // If modelName is removed from UI, we might not want to save it, or save a default.
+    // For now, let's keep saving it as it might be set programmatically or from localStorage.
     if (modelName) localStorage.setItem('aiModelName', modelName);
     localStorage.setItem('aiCaptureInterval', captureInterval.toString());
     if (gameContext) localStorage.setItem('aiGameContext', gameContext);
@@ -132,7 +78,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = React.memo(({ onAiStatusChange, 
   }, [apiKey, modelName, captureInterval, gameContext, onConfigChange]);
 
   const toggleAI = useCallback(() => {
-    if (!apiKey || !modelName || apiKeyStatus !== 'valid') {
+    if (!apiKey || !modelName || apiKeyStatus !== 'valid') { // modelName is still checked here
       setHookApiKeyMessage('Valid API key and model required to activate AI.'); 
       return;
     }
@@ -143,28 +89,25 @@ const ConfigPanel: React.FC<ConfigPanelProps> = React.memo(({ onAiStatusChange, 
     if (onAiStatusChange) {
       onAiStatusChange(newState ? 'Active' : 'Inactive');
     }
-  }, [apiKey, modelName, apiKeyStatus, isAiActive, onAiStatusChange, setHookApiKeyMessage]);
-
+  }, [apiKey, modelName, apiKeyStatus, isAiActive, onAiStatusChange, setHookApiKeyMessage]);  const headerContent = (
+    <div className="flex items-center">
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+      </svg>
+      AI Configuration
+    </div>
+  );
+  
   return (
-    <div 
-      className="space-y-4 p-6 bg-indigo-900 bg-opacity-60 rounded-lg shadow-lg border border-indigo-700" 
-      style={{
-        // Add CSS to prevent flickering
-        transform: 'translateZ(0)', // Force GPU acceleration
-        backfaceVisibility: 'hidden',
-        perspective: '1000px',
-        willChange: 'transform', // Hint to the browser
-        position: 'relative' // Position relative to keep it in the flow
-      }}
+    <StablePanel
+      title={headerContent}
+      className="bg-indigo-900 bg-opacity-60 border border-indigo-700"
+      titleClassName="text-xl font-bold text-white mb-4 p-6 pb-2"
+      contentClassName="space-y-4 p-6 pt-0"
     >
-      <h3 className="text-xl font-bold text-white mb-4 flex items-center">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-        </svg>
-        AI Configuration
-      </h3>
       
       <div className="space-y-4">
+        {/* API Key Input Section - remains the same */}
         <div className="relative mb-4">
           <label htmlFor="api-key" className="block font-medium text-indigo-200 mb-1">
             OpenRouter API Key:
@@ -208,86 +151,45 @@ const ConfigPanel: React.FC<ConfigPanelProps> = React.memo(({ onAiStatusChange, 
           )}
         </div>
         
-        <div>
-          <label htmlFor="model-select" className="block text-sm font-medium text-indigo-200 mb-1">
-            AI Model
+        {/* AI Model section: Button to open Modal */}
+        {/* Container for the AI Model label, button, and status messages */}
+        <div> 
+          <label className="block text-sm font-medium text-indigo-200 mb-1">
+            AI Model:
           </label>
           
-          {isLoadingModels ? (
-            <div className="w-full px-3 py-2 bg-indigo-800 bg-opacity-50 text-indigo-300 border border-indigo-600 rounded-md">
-              Loading models... <span className="animate-pulse">⏳</span>
-            </div>
-          ) : augmentedModels.length > 0 ? ( // MODIFIED: Check augmentedModels.length for the main condition
-            <>
-              <div className="flex items-center mb-2">
-                <input 
-                  id="vision-filter"
-                  type="checkbox"
-                  checked={showVisionOnly}
-                  onChange={(e) => setShowVisionOnly(e.target.checked)}
-                  className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                  disabled={isAiActive || isLoadingModels}
-                />
-                <label htmlFor="vision-filter" className="ml-2 block text-sm text-indigo-200">
-                  Show vision-capable models only
-                </label>
-              </div>
-              
-              <div className="relative mb-2">
-                <input 
-                  type="text"
-                  value={modelSearchQuery}
-                  onChange={(e) => setModelSearchQuery(e.target.value)}
-                  placeholder="Search models by name or ID..."
-                  className="w-full px-3 py-2 bg-indigo-800 bg-opacity-50 text-white border border-indigo-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 mb-1"
-                  disabled={isAiActive || isLoadingModels}
-                />
-              </div>
-              
-
-              <select 
-                id="model-select"
-                value={modelName}
-                onChange={(e) => setModelName(e.target.value)} // setModelName from hook handles the state
-                className="w-full px-3 py-2 bg-indigo-800 bg-opacity-50 text-white border border-indigo-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
-                disabled={isAiActive || isLoadingModels}
-              >
-                {/* Ensure current selection is always an option, using augmentedModels for details */}
-                {modelName && !uiFilteredModels.some(m => m.id === modelName) && (() => {
-                  // MODIFIED: Find details from augmentedModels for consistency
-                  const modelDetails = augmentedModels.find(m => m.id === modelName);
-                  const name = modelDetails ? modelDetails.name : (modelName.split('/').pop() || modelName);
-                  const hasVision = modelDetails ? modelDetails.hasVision : false; 
-                  return (
-                    <option key={modelName} value={modelName}>
-                      {name}{hasVision ? " (Vision)" : ""} (Current Selection)
-                    </option>
-                  );
-                })()}
-                {uiFilteredModels.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}{model.hasVision ? " (Vision)" : ""}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs mt-2 text-indigo-300">
-                {/* MODIFIED: Use augmentedModels.length for the total count */}
-                Showing {uiFilteredModels.length} of {augmentedModels.length} models.
-                {showVisionOnly ? ' (Vision-capable only)' : ''}
-                {modelSearchQuery ? ` (matching "${modelSearchQuery}")` : ''}
-
+          <button
+            onClick={() => setShowModelModal(true)}
+            className="w-full px-3 py-2 bg-indigo-700 hover:bg-indigo-600 text-white border border-indigo-500 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed flex justify-between items-center"
+            disabled={isAiActive || apiKeyStatus !== 'valid'}
+          >
+            <span>
+              {modelName ? `${modelName.split('/').pop() || modelName}` : 'Select a Model'}
+              {modelName && allModels.find(m => m.id === modelName)?.hasVision && <span className="text-xs text-cyan-300 ml-2">(Vision)</span>}
+            </span>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
+          {/* Container for status messages with a fixed height and vertically centered content */}
+          <div className="h-[20px] mt-1 flex items-center"> 
+            {apiKeyStatus !== 'valid' ? (
+              <p className="text-xs text-yellow-300 m-0 p-0 leading-none">
+                A valid API key is required to select a model.
               </p>
-            </>
-          ) : (
-            <div className="w-full px-3 py-2 bg-indigo-800 bg-opacity-50 text-indigo-300 border border-indigo-600 rounded-md">
-              No models available.
-              {apiKeyStatus !== 'valid' && ' Please check your API key.'}
-              {apiKeyStatus === 'valid' && !isLoadingModels && ' Could not fetch models from OpenRouter, or no models match current filters.'}
-              {apiKeyStatus === 'valid' && isLoadingModels && ' Still attempting to load models...'}
-            </div>
-          )}
+            ) : isLoadingModels ? ( 
+              <p className="text-xs text-indigo-300 m-0 p-0 leading-none">Loading models...</p>
+            ) : allModels.length === 0 ? ( 
+              <p className="text-xs text-yellow-300 m-0 p-0 leading-none">
+                No models loaded. Check API key or network.
+              </p>
+            ) : (
+              <span /> // Empty span to maintain layout if no message is shown
+            )}
+          </div>
         </div>
         
+        {/* Capture Interval Section - remains the same */}
         <div>
           <label htmlFor="capture-interval" className="block text-sm font-medium text-indigo-200 mb-1">
             Capture Interval (ms)
@@ -308,6 +210,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = React.memo(({ onAiStatusChange, 
           </p>
         </div>
         
+        {/* Game Context Section - remains the same */}
         <div>
           <label htmlFor="game-context" className="block text-sm font-medium text-indigo-200 mb-1">
             Game Context
@@ -326,6 +229,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = React.memo(({ onAiStatusChange, 
           </p>
         </div>
         
+        {/* AI Control Button Section - remains the same */}
         <div className="flex items-center justify-between pt-2">
           <span className="text-sm font-medium text-indigo-200">AI Control</span>
           <button
@@ -343,7 +247,30 @@ const ConfigPanel: React.FC<ConfigPanelProps> = React.memo(({ onAiStatusChange, 
           </button>
         </div>
       </div>
-    </div>
+
+      {/* Model Selection Modal */}
+      {showModelModal && (
+        <ModelSelectionModal 
+          isOpen={showModelModal}
+          onClose={() => setShowModelModal(false)}
+          onModelSelect={(selectedModelId) => { // Renamed from modelId to selectedModelId for clarity
+            setModelName(selectedModelId);
+            setShowModelModal(false);
+          }}
+          models={allModels} // Pass allModels as models
+          isLoading={isLoadingModels} // Pass isLoadingModels as isLoading
+          currentModelId={modelName} // Pass modelName as currentModelId
+          apiKeyStatus={apiKeyStatus}
+          // defaultVisionModels prop is removed as it's not used by ModelSelectionModal
+        />
+      )}
+    </StablePanel>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison function to prevent unnecessary re-renders
+  return (
+    prevProps.onAiStatusChange === nextProps.onAiStatusChange &&
+    prevProps.onConfigChange === nextProps.onConfigChange
   );
 });
 

@@ -24,22 +24,54 @@ code {
 .anti-flicker {
   transform: translateZ(0);
   backface-visibility: hidden;
-  perspective: 1000;
+  perspective: 1000px;
   will-change: transform;
+  position: relative;
+  z-index: 1;
+  contain: paint;
 }
 
 /* Remove transition effects that might contribute to flickering */
 .no-transitions * {
   transition: none !important;
+  animation: none !important;
 }
 
 /* Force hardware acceleration for panel containers */
 .panel-container {
   transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
+  contain: layout style paint;
+  isolation: isolate;
 }
 
 /* Prevent text layer flickering */
 .text-content {
   -webkit-font-smoothing: subpixel-antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Panel stabilization for config and status panels */
+.stable-panel {
+  position: relative;
+  z-index: 1;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+  will-change: transform;
+  contain: layout style paint;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.05); /* Invisible border to help prevent edge flickering */
+}
+
+/* Fix for ghosted/duplicated panels that appear offset */
+.ghost-fix {
+  isolation: isolate;
+  contain: layout style paint;
+  box-sizing: border-box;
+  -webkit-mask-image: -webkit-radial-gradient(white, black); /* Fix for Safari */
+}
+
+/* Reserve space for scrollbar to prevent layout jumps */
+.stable-scrollbar-y {
+  scrollbar-gutter: stable both-edges;
 }

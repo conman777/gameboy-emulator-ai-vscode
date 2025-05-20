@@ -1,4 +1,4 @@
-// Updated App.tsx with AIConsole integration, Knowledge Base, Navigation, and Settings Modal
+// Updated App.tsx with AIConsole integration, Knowledge Base, and Settings Modal
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import './App.css';
 import { EmulatorProvider } from './context/EmulatorContext';
@@ -10,16 +10,14 @@ import LegalDisclaimer from './components/LegalDisclaimer';
 import AIController from './components/AIController';
 import AIConsole from './components/GameAIConsole';
 import AIGoalsPanel from './components/AIGoalsPanel';  // Import our new component
+import GhostFreeLayout from './components/GhostFreeLayout'; // Import new anti-ghosting component
 import { GameBoyButton } from './types';
-import { sendCustomPrompt, analyzePlayerPosition, analyzeGridLocation } from './services/AIService';
+import { sendCustomPrompt } from './services/AIService'; 
 import KnowledgeBaseView from './components/KnowledgeBaseView';
 import KnowledgeBaseButton from './components/KnowledgeBaseButton';
 import SettingsModal from './components/SettingsModal';
 import { CogIcon } from './components/Icons';
-import NavigationPanel from './components/NavigationPanel';
 import { getAllKnowledgeEntries, getAllNavigationPoints } from './services/KnowledgeBaseService';
-import { executeNavigationSequence } from './services/NavigationService';
-import { NavigationInstruction } from './services/GridNavigationService';
 
 const App: React.FC = () => {
   // References for canvas
@@ -46,18 +44,9 @@ const App: React.FC = () => {
     gameContext: ''
   });
   
-  // Knowledge base and navigation states
+  // Knowledge base states
   const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState(false);
   const [knowledgeCount, setKnowledgeCount] = useState(0);
-  const [isNavigating, setIsNavigating] = useState(false);
-  const [navigationProgress, setNavigationProgress] = useState<{
-    current: number;
-    total: number;
-    currentAction: NavigationInstruction | null;
-  }>({ current: 0, total: 0, currentAction: null });
-
-  // Grid navigation states
-  const [screenCapture, setScreenCapture] = useState<string | null>(null);
   
   // Settings Modal State
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -70,9 +59,6 @@ const App: React.FC = () => {
   // AI Goals Panel State
   const [isAIGoalsPanelOpen, setIsAIGoalsPanelOpen] = useState(false);
 
-  // Auto-navigation sequence generator reference
-  const navigationSequenceRef = useRef<Generator<any, void, unknown> | null>(null);
-  
   // Emulator instance reference - not typed perfectly but works for our needs
   const emulatorRef = useRef<any>(null);
 
@@ -175,187 +161,12 @@ const App: React.FC = () => {
       setErrorMessage(`Error sending prompt: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }, [aiStatus, aiConfig]);
-    // Handle grid navigation request from the NavigationPanel
-  const handleNavigationRequest = useCallback((instructions: NavigationInstruction[]) => {
-    if (!emulatorRef.current || instructions.length === 0 || isNavigating) {
-      return;
-    }
     
-    try {
-      // Stop any existing navigation
-      if (navigationSequenceRef.current) {
-        navigationSequenceRef.current.return();
-        navigationSequenceRef.current = null;
-      }
-      
-      // Convert grid navigation instructions to button presses
-      const buttonSequence: GameBoyButton[] = [];
-      instructions.forEach(instruction => {
-        // For each instruction, we'll press the button the required number of times
-        // Most instructions are directional (up, down, left, right) or interaction (a, b)
-        buttonSequence.push(instruction.button);
-      });
-      
-      // Start a new navigation sequence
-      setIsNavigating(true);
-      setNavigationProgress({
-        current: 0,
-        total: buttonSequence.length,
-        currentAction: instructions[0]
-      });
-      
-      // Create a generator for the navigation sequence
-      navigationSequenceRef.current = executeNavigationSequence(
-        emulatorRef.current,
-        buttonSequence,
-        500 // 500ms between actions
-      );
-      
-      // Start the navigation process
-      const runNavigationStep = () => {
-        if (navigationSequenceRef.current) {
-          const result = navigationSequenceRef.current.next();
-          
-          if (!result.done) {
-            // Find the current instruction
-            const currentInstruction = instructions[Math.min(result.value.stepNumber, instructions.length - 1)];
-            
-            // Update progress
-            setNavigationProgress({
-              current: result.value.stepNumber,
-              total: result.value.totalSteps,
-              currentAction: currentInstruction
-            });
-            
-            // Add to last ten actions
-            setLastTenActions(prev => {
-              const newActions = [...prev];
-              newActions.push(result.value.button);
-              return newActions.slice(-10);
-            });
-            
-            // Schedule next step
-            setTimeout(runNavigationStep, 500);
-          } else {
-            // Navigation complete
-            setIsNavigating(false);
-            navigationSequenceRef.current = null;
-          }
-        }
-      };
-      
-      // Start the sequence
-      runNavigationStep();
-    } catch (error) {
-      console.error('Error executing navigation sequence:', error);
-      setErrorMessage(`Navigation error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setIsNavigating(false);
-    }
-  }, [isNavigating]);
-  
   // Store emulator reference when it's created by EmulatorDisplay
   const handleEmulatorCreated = useCallback((emulator: any) => {
     emulatorRef.current = emulator;
   }, []);
 
-  // Capture the current screen for grid analysis and overlay
-  const captureScreenForGrid = useCallback(async () => {
-    if (emulatorRef.current) {
-      try {
-        const screenData = emulatorRef.current.captureScreenshot ? 
-          emulatorRef.current.captureScreenshot() : 
-          emulatorRef.current.getScreenDataAsBase64 ? 
-            emulatorRef.current.getScreenDataAsBase64() : 
-            null;
-        
-        setScreenCapture(screenData);
-        return screenData;
-      } catch (error) {
-        console.error('Error capturing screen:', error);
-        return null;
-      }
-    }
-    return null;
-  }, []);
-  // Detect player position on the grid using AI
-  const detectPlayerPosition = useCallback(async (): Promise<{x: number, y: number, confidence: number} | null> => {
-    if (aiStatus !== 'Active' || !aiConfig.apiKey || !aiConfig.modelName) {
-      setErrorMessage('AI not active or missing configuration');
-      return null;
-    }
-
-    // Capture current screen
-    const screenData = await captureScreenForGrid();
-    if (!screenData) {
-      setErrorMessage('Failed to capture game screen');
-      return null;
-    }
-
-    try {
-      // Use AI to analyze player position on grid
-      const result = await analyzePlayerPosition(
-        screenData,
-        aiConfig.modelName,
-        aiConfig.apiKey
-      );
-
-      if (result.confidence >= 0.6) {
-        // If confidence is high enough, update AI thought
-        setAiThought(`I detected the player at grid position (${result.x}, ${result.y}) with ${Math.round(result.confidence * 100)}% confidence.`);
-        
-        // Return the result for use in the NavigationPanel
-        return result;
-      } else {
-        setAiThought(`I'm not confident about the player's position. Best guess: (${result.x}, ${result.y}) with only ${Math.round(result.confidence * 100)}% confidence.`);
-        setErrorMessage('Could not confidently detect player position');
-        return null;
-      }
-    } catch (error) {
-      console.error('Error analyzing player position:', error);
-      setErrorMessage(`Error detecting player position: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return null;
-    }
-  }, [aiStatus, aiConfig, captureScreenForGrid]);
-  
-  // Analyze the content at a specific grid location
-  const analyzeGridLocationContent = useCallback(async (gridX: number, gridY: number) => {
-    if (aiStatus !== 'Active' || !aiConfig.apiKey || !aiConfig.modelName) {
-      setErrorMessage('AI not active or missing configuration');
-      return null;
-    }
-
-    // Capture current screen
-    const screenData = await captureScreenForGrid();
-    if (!screenData) {
-      setErrorMessage('Failed to capture game screen');
-      return null;
-    }
-
-    try {
-      // Use AI to analyze what's at this grid location
-      const description = await analyzeGridLocation(
-        screenData,
-        gridX,
-        gridY,
-        aiConfig.modelName,
-        aiConfig.apiKey
-      );
-
-      if (description) {
-        // Update AI thought with the analysis
-        setAiThought(`At grid position (${gridX}, ${gridY}): ${description}`);
-        return description;
-      } else {
-        setErrorMessage('Could not analyze grid location');
-        return null;
-      }
-    } catch (error) {
-      console.error('Error analyzing grid location:', error);
-      setErrorMessage(`Error analyzing grid: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return null;
-    }
-  }, [aiStatus, aiConfig, captureScreenForGrid]);
-  
   // Settings Modal Handlers
   const toggleSettingsModal = () => {
     setIsSettingsModalOpen(!isSettingsModalOpen);
@@ -378,60 +189,42 @@ const App: React.FC = () => {
   
   return (
     <EmulatorProvider canvasElement={canvasElement}>
-      <div className="min-h-screen bg-gray-900 text-white flex flex-col p-6">
-        <div className="flex justify-between items-center mb-6 w-full max-w-8xl mx-auto">
-          <h1 className="text-4xl font-bold text-indigo-400 drop-shadow-lg">Game Boy AI Emulator</h1>
-          <button 
-            onClick={toggleSettingsModal}
-            className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md text-white"
-            title="AI Settings"
-          >
-            <CogIcon className="w-6 h-6" />
-          </button>
-        </div>
-        
-        <div className="flex flex-col lg:flex-row gap-10 w-full max-w-8xl mx-auto">
-          {/* Left Column: Emulator Display and Controls - increased width for larger Game Boy */}
-          <div className="flex flex-col items-center space-y-8 flex-shrink-0 lg:w-3/5">
-            <EmulatorDisplay 
-              ref={canvasRef} 
+      {/* Changed min-h-screen to h-screen, added overflow-hidden, removed stable-scrollbar-y */}
+      <div className="h-screen bg-gray-900 text-white flex flex-col items-center p-4 overflow-hidden">
+        <LegalDisclaimer />
+        {/* Added flex-1 and overflow-hidden to the grid container */}
+        <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 overflow-hidden">
+          {/* Left Column: Emulator and Controls */}
+          {/* Added h-full, flex-col, items-center. Reduced space-y-8 to space-y-4. Added overflow-y-auto as fallback. */}
+          <div className="flex flex-col items-center space-y-4 lg:col-span-2 h-full overflow-y-auto p-2"> {/* Added padding for scrollbar */}
+            <EmulatorDisplay
+              ref={canvasRef}
               onEmulatorCreated={handleEmulatorCreated}
             />
-            <Controls 
+            <Controls
               onStatusChange={(status) => setEmulatorStatus(status)}
               onRomTitleChange={(title) => setRomTitle(title)}
               onError={(error) => setErrorMessage(error)}
             />
-            
+
             {/* Knowledge Base button - shown when AI is active and not in Simple Mode */}
             {aiStatus === 'Active' && !simpleMode && (
-              <div className="w-full flex justify-center mt-4">
-                <KnowledgeBaseButton 
+              <div className="w-full flex justify-center mt-2"> {/* Reduced mt-4 to mt-2 */}
+                <KnowledgeBaseButton
                   onClick={toggleKnowledgeBase}
                   knowledgeCount={knowledgeCount}
                 />
               </div>
             )}
           </div>
-          
-          {/* Right Column: Config, Status, and AI - adjusted width */}
-          <div className="flex flex-col space-y-6 flex-grow lg:w-2/5">
-            <ConfigPanel 
+          {/* Right Column: Config, Status, and AI - adjusted width with anti-ghosting layout */}
+          {/* Changed lg:max-h-[calc(100vh-2rem)] to h-full. Retained overflow-y-auto. */}
+          <GhostFreeLayout className="flex flex-col space-y-6 lg:col-span-1 h-full overflow-y-auto p-1"> {/* Added padding for scrollbar */}
+            <ConfigPanel
               onAiStatusChange={handleAiStatusChange}
               onConfigChange={handleConfigChange}
             />            
-            {/* Navigation Panel - Only visible when AI is active and not in Simple Mode */}
-            {aiStatus === 'Active' && !simpleMode && (
-              <NavigationPanel 
-                onRequestNavigate={handleNavigationRequest}
-                isNavigating={isNavigating}
-                progress={navigationProgress}
-                screenCapture={screenCapture}
-                onScreenCaptureRequest={captureScreenForGrid}
-                onDetectPlayerPosition={detectPlayerPosition}
-                onAnalyzeGridLocation={analyzeGridLocationContent}
-              />
-            )}
+            {/* Navigation Panel REMOVED */}
             
             {/* AI Thought Console Panel - Only visible when AI is active and not in Simple Mode */}
             {aiStatus === 'Active' && !simpleMode && (
@@ -496,12 +289,9 @@ const App: React.FC = () => {
               onStatusChange={(status: 'Inactive' | 'Active' | 'Error') => setAiStatus(status)}
               onError={(error: string | null) => setErrorMessage(error)}
               enabled={aiEnabled}
-              config={aiConfig}
-              maxTokens={maxTokensForAI} // Pass maxTokens to AIController
+              config={aiConfig}              maxTokens={maxTokensForAI} // Pass maxTokens to AIController
             />
-            
-            <LegalDisclaimer />
-          </div>
+          </GhostFreeLayout>
         </div>
         
         {/* Knowledge Base Modal - shown when isKnowledgeBaseOpen is true and not in Simple Mode */}
@@ -520,27 +310,6 @@ const App: React.FC = () => {
           simpleMode={simpleMode}
           onSimpleModeChange={handleSimpleModeChange}
         />
-        {isNavigating && (
-          <div className="fixed bottom-4 right-4 bg-indigo-900 text-white p-3 rounded-lg shadow-lg z-50">
-            <div className="text-sm font-medium">Auto-navigating...</div>
-            <div className="text-xs mt-1">
-              Step {navigationProgress.current} of {navigationProgress.total}
-            </div>
-            {navigationProgress.currentAction && (
-              <div className="text-xs mt-1">
-                Current action: <span className="font-bold">{navigationProgress.currentAction.button.toUpperCase()}</span>
-              </div>
-            )}
-            <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
-              <div 
-                className="bg-indigo-500 h-2 rounded-full" 
-                style={{ 
-                  width: `${(navigationProgress.current / navigationProgress.total) * 100}%` 
-                }}
-              ></div>
-            </div>
-          </div>
-        )}
       </div>
     </EmulatorProvider>
   );

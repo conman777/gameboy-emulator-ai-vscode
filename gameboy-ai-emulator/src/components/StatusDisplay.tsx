@@ -1,6 +1,7 @@
-// Placeholder for StatusDisplay component
+// StatusDisplay component - Refactored to eliminate ghosting effects
 import React from 'react';
 import { GameBoyButton } from '../types';
+import StablePanel from './StablePanel';
 
 interface StatusDisplayProps {
   romTitle: string | null;
@@ -12,7 +13,7 @@ interface StatusDisplayProps {
   lastTenActions?: (GameBoyButton | 'none')[];
 }
 
-// Use React.memo to prevent unnecessary re-renders
+// Use React.memo with a custom comparison function to prevent unnecessary re-renders
 const StatusDisplay: React.FC<StatusDisplayProps> = React.memo(({ 
     romTitle, 
     emulatorStatus, 
@@ -21,21 +22,14 @@ const StatusDisplay: React.FC<StatusDisplayProps> = React.memo(({
     errorMessage,
     aiThought,
     lastTenActions = []
-}) => {
+}) => {  
   return (
-    <div 
-      className="p-4 bg-gray-700 rounded-lg shadow space-y-2"
-      style={{
-        // Add CSS to prevent flickering
-        transform: 'translateZ(0)', // Force GPU acceleration
-        backfaceVisibility: 'hidden',
-        perspective: '1000px',
-        willChange: 'transform', // Hint to the browser
-        position: 'relative' // Position relative to keep it in the flow
-      }}
-    >
-        <h3 className="text-lg font-semibold text-white mb-2">Status</h3>
-        <p className="text-sm text-gray-300">
+    <StablePanel
+      title="Status"
+      className="bg-gray-700"
+      titleClassName="text-lg font-semibold text-white mb-2 p-4 pb-2"
+      contentClassName="p-4 pt-0 space-y-2"
+    >        <p className="text-sm text-gray-300">
             <span className="font-medium text-gray-100">Game:</span> {romTitle || 'No ROM Loaded'}
         </p>
         <p className="text-sm text-gray-300">
@@ -58,7 +52,8 @@ const StatusDisplay: React.FC<StatusDisplayProps> = React.memo(({
             }`}>
                 {aiStatus}
             </span>
-        </p>        {aiStatus === 'Active' && lastAiAction && (
+        </p>
+        {aiStatus === 'Active' && lastAiAction && (
             <p className="text-sm text-gray-300">
                 <span className="font-medium text-gray-100">Last AI Action:</span> {lastAiAction === 'none' ? 'None' : lastAiAction.toUpperCase()}
             </p>
@@ -105,7 +100,18 @@ const StatusDisplay: React.FC<StatusDisplayProps> = React.memo(({
                 <span className="font-medium text-red-300">Error:</span> {errorMessage}
             </p>
         )}
-    </div>
+    </StablePanel>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison to prevent unnecessary re-renders
+  return (
+    prevProps.romTitle === nextProps.romTitle &&
+    prevProps.emulatorStatus === nextProps.emulatorStatus &&
+    prevProps.aiStatus === nextProps.aiStatus &&
+    prevProps.lastAiAction === nextProps.lastAiAction &&
+    prevProps.errorMessage === nextProps.errorMessage &&
+    prevProps.aiThought === nextProps.aiThought &&
+    JSON.stringify(prevProps.lastTenActions) === JSON.stringify(nextProps.lastTenActions)
   );
 });
 

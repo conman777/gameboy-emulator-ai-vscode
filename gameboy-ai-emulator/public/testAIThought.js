@@ -3,11 +3,11 @@ console.log('Testing AI thought display...');
 
 // Function to simulate AI response with thought process
 function simulateAIResponse() {
-  // Get relevant elements from the page
-  const statusDisplay = document.querySelector('.bg-gray-700.rounded-lg.shadow');
+  // Try to find the status display with the updated structure
+  const statusDisplay = document.querySelector('.bg-gray-700.rounded-lg');
   
   if (!statusDisplay) {
-    console.error('Status display not found!');
+    console.error('Status display not found! The component might have been restructured.');
     return;
   }
   
