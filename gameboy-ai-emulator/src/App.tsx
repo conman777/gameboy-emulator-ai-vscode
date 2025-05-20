@@ -114,6 +114,19 @@ const App: React.FC = () => {
     setAiStatus(status);
     setAiEnabled(status === 'Active');
   }, []);
+
+  // Memoized handlers for Controls component
+  const handleEmulatorStatusChange = useCallback((status: 'Idle' | 'No ROM' | 'Ready' | 'Running' | 'Paused' | 'Error') => {
+    setEmulatorStatus(status);
+  }, []); // setEmulatorStatus is stable
+
+  const handleRomTitleChange = useCallback((title: string | null) => {
+    setRomTitle(title);
+  }, []); // setRomTitle is stable
+
+  const handleErrorMessageChange = useCallback((error: string | null) => {
+    setErrorMessage(error);
+  }, []); // setErrorMessage is stable
   
   // Handler for custom prompts from the AIConsole
   const handleSendPrompt = useCallback(async (prompt: string) => {
@@ -189,119 +202,132 @@ const App: React.FC = () => {
   
   return (
     <EmulatorProvider canvasElement={canvasElement}>
-      {/* Changed min-h-screen to h-screen, added overflow-hidden, removed stable-scrollbar-y */}
-      <div className="h-screen bg-gray-900 text-white flex flex-col items-center p-4 overflow-hidden">
+      {/* Use h-screen flex flex-col, overflow-hidden to prevent page-level scrolling */}
+      <div className="h-screen bg-gray-900 text-white flex flex-col overflow-hidden">
         <LegalDisclaimer />
-        {/* Added flex-1 and overflow-hidden to the grid container */}
-        <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 overflow-hidden">
-          {/* Left Column: Emulator and Controls */}
-          {/* Added h-full, flex-col, items-center. Reduced space-y-8 to space-y-4. Added overflow-y-auto as fallback. */}
-          <div className="flex flex-col items-center space-y-4 lg:col-span-2 h-full overflow-y-auto p-2"> {/* Added padding for scrollbar */}
-            <EmulatorDisplay
-              ref={canvasRef}
-              onEmulatorCreated={handleEmulatorCreated}
-            />
-            <Controls
-              onStatusChange={(status) => setEmulatorStatus(status)}
-              onRomTitleChange={(title) => setRomTitle(title)}
-              onError={(error) => setErrorMessage(error)}
-            />
+        {/* Main content area with flex-1 to take all available space */}
+        <div className="flex-1 w-full px-2 pb-2 overflow-hidden">
+          {/* Max width container with h-full to ensure proper height constraints */}
+          <div className="max-w-7xl mx-auto h-full flex flex-col lg:flex-row gap-2">
+            {/* Left Column: Emulator and Controls - use flex-col and allow internal scrolling */}
+            <div className="lg:w-2/3 h-full flex flex-col overflow-hidden">
+              {/* Emulator container with flex-shrink-0 to prevent compression */}
+              <div className="flex-shrink-0">
+                <EmulatorDisplay
+                  ref={canvasRef}
+                  onEmulatorCreated={handleEmulatorCreated}
+                />
+              </div>
+              {/* Controls in a scrollable container */}
+              <div className="flex-1 overflow-y-auto mt-2 pr-1">
+                <Controls
+                  onStatusChange={handleEmulatorStatusChange}
+                  onRomTitleChange={handleRomTitleChange}
+                  onError={handleErrorMessageChange}
+                />
+              </div>
+            </div>
+            
+            {/* Right Column: Config, Status, and AI - with internal scrolling */}
+            <div className="lg:w-1/3 h-full overflow-hidden flex flex-col">
+              <GhostFreeLayout className="flex-1 flex flex-col overflow-y-auto pr-1">
+                <ConfigPanel
+                  onAiStatusChange={handleAiStatusChange}
+                  onConfigChange={handleConfigChange}
+                />
 
-            {/* Knowledge Base button - shown when AI is active and not in Simple Mode */}
-            {aiStatus === 'Active' && !simpleMode && (
-              <div className="w-full flex justify-center mt-2"> {/* Reduced mt-4 to mt-2 */}
-                <KnowledgeBaseButton
-                  onClick={toggleKnowledgeBase}
-                  knowledgeCount={knowledgeCount}
-                />
-              </div>
-            )}
-          </div>
-          {/* Right Column: Config, Status, and AI - adjusted width with anti-ghosting layout */}
-          {/* Changed lg:max-h-[calc(100vh-2rem)] to h-full. Retained overflow-y-auto. */}
-          <GhostFreeLayout className="flex flex-col space-y-6 lg:col-span-1 h-full overflow-y-auto p-1"> {/* Added padding for scrollbar */}
-            <ConfigPanel
-              onAiStatusChange={handleAiStatusChange}
-              onConfigChange={handleConfigChange}
-            />            
-            {/* Navigation Panel REMOVED */}
-            
-            {/* AI Thought Console Panel - Only visible when AI is active and not in Simple Mode */}
-            {aiStatus === 'Active' && !simpleMode && (
-              <div className="w-full">
-                <h3 className="text-lg font-semibold text-indigo-300 mb-2">AI Insights</h3>
-                <AIConsole 
-                  isActive={aiStatus === 'Active'}
-                  onSendPrompt={handleSendPrompt}
+                {/* AI Thought Console Panel */}
+                {aiStatus === 'Active' && !simpleMode && (
+                  <div className="w-full mt-2">
+                    <AIConsole 
+                      isActive={aiStatus === 'Active'}
+                      onSendPrompt={handleSendPrompt}
+                      aiThought={aiThought}
+                      lastAction={lastAiAction}
+                    />
+                  </div>
+                )}
+
+                {/* Knowledge Base button - shown when AI is active */}
+                {aiStatus === 'Active' && !simpleMode && (
+                  <div className="w-full flex justify-center my-2">
+                    <KnowledgeBaseButton
+                      onClick={toggleKnowledgeBase}
+                      knowledgeCount={knowledgeCount}
+                    />
+                  </div>
+                )}
+
+                {/* AI Goals Panel Toggle Button */}
+                {aiStatus === 'Active' && !simpleMode && (
+                  <div className="w-full flex justify-end my-2">
+                    <button 
+                      onClick={toggleAIGoalsPanel}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-md text-sm"
+                    >
+                      Manage AI Goals & Prompts
+                    </button>
+                  </div>
+                )}
+                
+                <StatusDisplay 
+                  romTitle={romTitle}
+                  emulatorStatus={emulatorStatus}
+                  aiStatus={aiStatus}
+                  lastAiAction={lastAiAction}
+                  errorMessage={errorMessage}
                   aiThought={aiThought}
-                  lastAction={lastAiAction}
+                  lastTenActions={lastTenActions}
                 />
-              </div>
-            )}
-              {/* AI Goals Panel - Only visible when AI is active and not in Simple Mode */}
-            {aiStatus === 'Active' && !simpleMode && isAIGoalsPanelOpen && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div className="w-full max-w-4xl max-h-[90vh] overflow-auto">
-                  <AIGoalsPanel onClose={() => setIsAIGoalsPanelOpen(false)} />
-                </div>
-              </div>
-            )}
-              {/* AI Goals Panel Toggle Button */}
-            {aiStatus === 'Active' && !simpleMode && (
-              <div className="w-full flex justify-end mb-2">
-                <button 
-                  onClick={toggleAIGoalsPanel}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm"
-                >
-                  Manage AI Goals & Prompts
-                </button>
-              </div>
-            )}
-            
-            <StatusDisplay 
-              romTitle={romTitle}
-              emulatorStatus={emulatorStatus}
-              aiStatus={aiStatus}
-              lastAiAction={lastAiAction}
-              errorMessage={errorMessage}
-              aiThought={aiThought}
-              lastTenActions={lastTenActions}
-            />
-            
-            <AIController 
-              onActionPerformed={(action: GameBoyButton | 'none' | null, thought?: string) => {
-                setLastAiAction(action);
-                if (thought) setAiThought(thought);
                 
-                // Add to last 10 actions list if it's a valid button press
-                if (action && action !== null) {
-                  setLastTenActions(prev => {
-                    const newActions = [...prev];
-                    newActions.push(action);
-                    // Keep only the last 10 actions
-                    return newActions.slice(-10);
-                  });
-                }
-                
-                // Update knowledge count since AI might have added knowledge
-                updateKnowledgeCount();
-              }}
-              onStatusChange={(status: 'Inactive' | 'Active' | 'Error') => setAiStatus(status)}
-              onError={(error: string | null) => setErrorMessage(error)}
-              enabled={aiEnabled}
-              config={aiConfig}              maxTokens={maxTokensForAI} // Pass maxTokens to AIController
-            />
-          </GhostFreeLayout>
+                <AIController 
+                  onActionPerformed={(action: GameBoyButton | 'none' | null, thought?: string) => {
+                    setLastAiAction(action);
+                    if (thought) setAiThought(thought);
+                    
+                    // Add to last 10 actions list if it's a valid button press
+                    if (action && action !== null) {
+                      setLastTenActions(prev => {
+                        const newActions = [...prev];
+                        newActions.push(action);
+                        // Keep only the last 10 actions
+                        return newActions.slice(-10);
+                      });
+                    }
+                    
+                    // Update knowledge count since AI might have added knowledge
+                    updateKnowledgeCount();
+                  }}
+                  onStatusChange={(status: 'Inactive' | 'Active' | 'Error') => setAiStatus(status)}
+                  onError={(error: string | null) => setErrorMessage(error)}
+                  enabled={aiEnabled}
+                  config={aiConfig}
+                  maxTokens={maxTokensForAI}
+                />
+              </GhostFreeLayout>
+            </div>
+          </div>
         </div>
         
-        {/* Knowledge Base Modal - shown when isKnowledgeBaseOpen is true and not in Simple Mode */}
+        {/* AI Goals Panel - Modal overlay */}
+        {aiStatus === 'Active' && !simpleMode && isAIGoalsPanelOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="w-full max-w-4xl max-h-[90vh] overflow-auto">
+              <AIGoalsPanel onClose={() => setIsAIGoalsPanelOpen(false)} />
+            </div>
+          </div>
+        )}
+        
+        {/* Knowledge Base Modal */}
         {isKnowledgeBaseOpen && !simpleMode && (
           <KnowledgeBaseView 
             isVisible={isKnowledgeBaseOpen}
             onClose={() => setIsKnowledgeBaseOpen(false)}
-            currentRomTitle={romTitle} // Pass romTitle here
+            currentRomTitle={romTitle}
           />
         )}
+        
+        {/* Settings Modal */}
         <SettingsModal 
           isOpen={isSettingsModalOpen}
           onClose={toggleSettingsModal}

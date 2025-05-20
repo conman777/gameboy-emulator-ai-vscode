@@ -213,8 +213,8 @@ const AIController: React.FC<AIControllerProps> = ({
 
   // Handle custom user prompts
   const handleCustomPrompt = useCallback(async (promptText: string) => { // Renamed prompt to promptText for clarity
-    if (!emulator || !isActive || !apiKey || !modelName) {
-      if (onError) onError('AI not active or missing configuration.');
+    if (!emulator || !isActive || !apiKey || !modelName || !feedbackServiceRef.current) {
+      if (onError) onError('AI not active or missing configuration, or feedback service unavailable.');
       return;
     }
 
@@ -238,8 +238,22 @@ const AIController: React.FC<AIControllerProps> = ({
         return;
       }
       
-      // Send the custom prompt to the AI with the current screen
-      const result = await sendCustomPrompt(imageData, modelName, apiKey, promptText, gameContext);
+      // Get feedback to include with the custom prompt
+      const feedbackContext: FeedbackContext = {
+        gameTitle: romTitle || "Unknown Game",
+        currentEmulatorTime: Date.now(),
+      };
+      const feedbackResult: FeedbackResult = await feedbackServiceRef.current.pollEvents(feedbackContext, imageData);
+      
+      // Send the custom prompt to the AI with the current screen and feedback
+      const result = await sendCustomPrompt(
+        imageData, 
+        modelName, 
+        apiKey, 
+        promptText, 
+        gameContext,
+        feedbackResult.textFeedback // Pass feedback text array
+      );
       
       // Send the response back up to the parent component
       if (onPromptResponse) onPromptResponse(result.aiThought);
