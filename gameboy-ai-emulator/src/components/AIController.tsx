@@ -289,6 +289,7 @@ const AIController: React.FC<AIControllerProps> = ({
         console.log('Stopping AI control interval...');
         clearInterval(intervalRef.current);
         intervalRef.current = null;
+         if (emulator) emulator.stop();
         if (onStatusChange) onStatusChange('Inactive');
       }
     }

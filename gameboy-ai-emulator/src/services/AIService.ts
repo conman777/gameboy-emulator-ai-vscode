@@ -104,7 +104,7 @@ export const getGameAction = async (
       try {
         let recordedAction: GameBoyButton | 'none' | undefined = undefined;
         
-        if (parsedResponseForFinally && parsedResponseForFinally.action !== 'error') {
+        if (parsedResponseForFinally && parsedResponseForFinally.action && parsedResponseForFinally.action !== 'error') {
             recordedAction = parsedResponseForFinally.action;
         }
 

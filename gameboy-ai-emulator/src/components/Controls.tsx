@@ -120,6 +120,11 @@ const Controls: React.FC<ControlsProps> = ({
     try {
       await clearRom();
       setHasStoredRom(false);
+      if (emulator) emulator.stop();
+      setRomLoaded(false);
+      setRomFile(null);
+      if (onRomTitleChange) onRomTitleChange(null);
+      updateStatus('No ROM');
       if (onError) {
         onError("Stored ROM cleared successfully!");
         // Use setTimeout with a type check
@@ -136,6 +141,11 @@ const Controls: React.FC<ControlsProps> = ({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !emulator) return;
+
+    // If a ROM is already loaded, stop the emulator before loading a new one
+    if (romLoaded && emulator) {
+      emulator.stop();
+    }
     
     setRomFile(file); // Store the full File object when selected by user
       try {
