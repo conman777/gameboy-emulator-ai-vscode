@@ -104,7 +104,7 @@ export const getGameAction = async (
       try {
         let recordedAction: GameBoyButton | 'none' | undefined = undefined;
         
-        if (parsedResponseForFinally && parsedResponseForFinally.action !== 'error') {
+        if (parsedResponseForFinally && parsedResponseForFinally.action && parsedResponseForFinally.action !== 'error') {
             recordedAction = parsedResponseForFinally.action;
         }
 
@@ -173,18 +173,17 @@ export const sendCustomPrompt = async (
   apiKey: string,
   customPrompt: string,
   gameContext: string = '',
-  feedbackText?: string[] // Added feedbackText parameter here as well for consistency
+  feedbackText?: string[] 
 ): Promise<{ message: string; aiThought: string }> => {
   try {
-    const { buildCompleteLLMPrompt } = await import('./AIGoalService');
+    // Removed import of buildCompleteLLMPrompt as we are creating a custom system prompt here
+    // const { buildCompleteLLMPrompt } = await import('./AIGoalService');
     
-    // For custom prompts, we might not use the full structured prompt from AIGoalService,
-    // or we might adapt it. Here, we'll assume the customPrompt is the main user message.
-    // The system prompt from AIGoalService might still provide context.
-    // Let's assume a simpler construction for custom prompts for now, but include feedback.
-    
-    const activeGoalServicePrompt = buildCompleteLLMPrompt(gameContext, '', [], feedbackText);
-    // We will use the customPrompt as the primary user message, but the system prompt can provide general instructions.
+    const systemMessageForCustomPrompt = `You are an AI assistant observing a Game Boy game. The user has a question, instruction, or feedback for you regarding the current game state.
+Game being played: ${gameContext || 'Unknown Game'}.
+Please analyze their message in conjunction with the provided game screen image and respond directly, clearly, and thoughtfully to the user's input.
+${feedbackText && feedbackText.length > 0 ? `\nConsider the following recent feedback/instructions as well:\n${feedbackText.join('\n')}` : ''}
+Focus on addressing the user's message.`;
 
     const response = await axios.post(
       OPENROUTER_API_URL,
@@ -193,8 +192,7 @@ export const sendCustomPrompt = async (
         messages: [
           {
             role: 'system',
-            // Use the standard system prompt content, which now includes feedback preamble
-            content: activeGoalServicePrompt 
+            content: systemMessageForCustomPrompt 
           },
           {
             role: 'user',

@@ -83,6 +83,8 @@ export class EmulatorWrapper implements EmulatorWrapperApi {
     if (this.gameboy) {
       this.gameboy.onFrameFinished(() => {});
     }
+    this.gameboy = null;
+    this.romLoaded = false;
   }
 
   isReady(): boolean {
@@ -91,11 +93,11 @@ export class EmulatorWrapper implements EmulatorWrapperApi {
 
   isRunning(): boolean {
     // No explicit running state, so just check if gameboy exists and ROM is loaded
-    return this.isReady();
+    return this.romLoaded && this.gameboy !== null && (typeof (this.gameboy as any).cpu !== 'undefined');
   }
 
   async getScreenDataAsBase64(): Promise<string | null> {
-    if (!this.canvas || !this.isReady()) return null;
+    if (!this.canvas || !this.isReady() || !this.gameboy) return null;
     try {
       const dataUrl = this.canvas.toDataURL('image/png');
       return dataUrl.split(',')[1];
@@ -105,7 +107,7 @@ export class EmulatorWrapper implements EmulatorWrapperApi {
   }
 
   pressButton(button: GameBoyButton): void {
-    if (!this.gameboy || !this.isRunning()) return;
+    if (!this.gameboy || !this.isRunning() || !this.gameboy) return;
     // Use the input API for programmatic button presses
     switch (button) {
       case 'up': this.gameboy.input.isPressingUp = true; break;
@@ -120,7 +122,7 @@ export class EmulatorWrapper implements EmulatorWrapperApi {
   }
 
   releaseButton(button: GameBoyButton): void {
-    if (!this.gameboy || !this.isRunning()) return;
+    if (!this.gameboy || !this.isRunning() || !this.gameboy) return;
     switch (button) {
       case 'up': this.gameboy.input.isPressingUp = false; break;
       case 'down': this.gameboy.input.isPressingDown = false; break;
@@ -138,7 +140,7 @@ export class EmulatorWrapper implements EmulatorWrapperApi {
   }
   captureScreenshot(): string {
     // Check if emulator is ready
-    if (!this.isReady() || !this.isRunning() || !this.canvas) {
+    if (!this.isReady() || !this.isRunning() || !this.canvas || !this.gameboy) {
       console.error("Cannot capture screenshot: Emulator not ready or canvas not available");
       return "";
     }
@@ -153,7 +155,7 @@ export class EmulatorWrapper implements EmulatorWrapperApi {
     }
   }
   async saveState(): Promise<string> {
-    if (!this.gameboy || !this.isReady()) {
+    if (!this.gameboy || !this.isReady() || !this.gameboy) {
       throw new Error("Cannot save state: Emulator not ready");
     }
     
@@ -179,7 +181,7 @@ export class EmulatorWrapper implements EmulatorWrapperApi {
   }
 
   async loadState(saveData: string): Promise<boolean> {
-    if (!this.gameboy || !this.isReady()) {
+    if (!this.gameboy || !this.isReady() || !this.gameboy) {
       throw new Error("Cannot load state: Emulator not ready");
     }
     

@@ -97,24 +97,23 @@ const GameAIConsole: React.FC<GameAIConsoleProps> = ({
           </button>
         </div>
       </div>
-      
-      <div className="overflow-y-auto px-4 py-2 text-sm max-h-60" style={{ backgroundColor: '#1a1a2e' }}>
+        <div className="overflow-y-auto px-3 py-2 text-sm max-h-48" style={{ backgroundColor: '#1a1a2e' }}>
         {thoughtHistory.length === 0 ? (
-          <div className="text-gray-400 italic text-center py-4">
+          <div className="text-gray-400 italic text-center py-2 text-xs">
             AI thoughts will appear here when the AI starts analyzing the game...
           </div>
         ) : (
           thoughtHistory.map((entry, index) => (
-            <div key={index} className="mb-2 pb-2 border-b border-gray-700">
-              <div className="flex justify-between items-center text-xs text-gray-500 mb-1">
+            <div key={index} className="mb-1 pb-1 border-b border-gray-700">
+              <div className="flex justify-between items-center text-xs text-gray-500">
                 <span>{formatTime(entry.timestamp)}</span>
                 {entry.action && entry.action !== 'none' && entry.action !== 'error' && (
-                  <span className="px-2 py-0.5 bg-indigo-900 text-indigo-200 rounded-full">
+                  <span className="px-1 py-0.5 bg-indigo-900 text-indigo-200 rounded-full text-[10px]">
                     Action: {entry.action.toUpperCase()}
                   </span>
                 )}
               </div>
-              <div className={`${entry.thought.startsWith('User:') ? 'text-yellow-300' : 'text-indigo-300'}`}>
+              <div className={`${entry.thought.startsWith('User:') ? 'text-yellow-300' : 'text-indigo-300'} text-xs`}>
                 {entry.thought}
               </div>
             </div>
@@ -122,21 +121,20 @@ const GameAIConsole: React.FC<GameAIConsoleProps> = ({
         )}
         <div ref={consoleEndRef} />
       </div>
-      
-      <form 
+        <form 
         onSubmit={handleSubmit} 
-        className="border-t border-indigo-800 p-2 flex items-center bg-gray-900"
+        className="border-t border-indigo-800 p-1 flex items-center bg-gray-900"
       >
         <input
           type="text"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Send a message to the AI..."
-          className="flex-grow px-3 py-2 bg-gray-800 text-white border border-indigo-700 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="flex-grow px-2 py-1 text-xs bg-gray-800 text-white border border-indigo-700 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
         />
         <button
           type="submit"
-          className="ml-2 px-4 py-2 bg-indigo-700 text-white rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+          className="ml-2 px-2 py-1 text-xs bg-indigo-700 text-white rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
           disabled={!prompt.trim()}
         >
           Send

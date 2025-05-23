@@ -140,7 +140,7 @@ export class FeedbackService {
   }
 
   public async pollEvents(context: FeedbackContext, screenDataBase64: string): Promise<FeedbackResult> {
-    if (!this.activeConfig || context.gameTitle !== this.activeConfig?.gameTitlePattern) { // A bit simplistic matching here
+    if (!this.activeConfig || !new RegExp(this.activeConfig.gameTitlePattern, 'i').test(context.gameTitle)) {
         this.selectConfigForGame(context.gameTitle);
     }
     
