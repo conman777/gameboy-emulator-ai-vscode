@@ -21,6 +21,46 @@ import { getAllKnowledgeEntries, getAllNavigationPoints } from './services/Knowl
 import { ERROR_MESSAGE_DURATION } from './constants';
 import { AIProvider, useAI, AIConfig as AIConfigTypeFromContext, AIStatus } from './context/AIContext'; // Import AIConfigType
 
+// LeaderboardPanel component
+const LeaderboardPanel: React.FC<{ scores: { name: string; score: number }[] }> = ({ scores }) => (
+  <div className="panel">
+    <h2 className="panel-title">Leaderboard</h2>
+    <ol className="list-decimal pl-6">
+      {scores.length === 0 && <li className="text-gray-400">No scores yet.</li>}
+      {scores.map((entry, idx) => (
+        <li key={idx} className="mb-1">
+          <span className="font-semibold text-indigo-300">{entry.name}</span>: <span className="text-green-400">{entry.score}</span>
+        </li>
+      ))}
+    </ol>
+  </div>
+);
+
+function getHighScores(gameTitle: string): { name: string; score: number }[] {
+  const key = `highScores_${gameTitle}`;
+  const raw = localStorage.getItem(key);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+function saveHighScore(gameTitle: string, name: string, score: number) {
+  const key = `highScores_${gameTitle}`;
+  const scores = getHighScores(gameTitle);
+  scores.push({ name, score });
+  scores.sort((a, b) => b.score - a.score);
+  localStorage.setItem(key, JSON.stringify(scores.slice(0, 10)));
+}
+
+// Placeholder: Replace with actual score retrieval from emulator or AIController
+function getCurrentScore() {
+  // TODO: Integrate with emulator/AIController to get the real score
+  return Math.floor(Math.random() * 10000); // Random for demo
+}
+
 const App: React.FC = () => {
   // References for canvas
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -64,6 +104,9 @@ const App: React.FC = () => {
 
   // Emulator instance reference
   const emulatorRef = useRef<EmulatorWrapperApi | null>(null);
+
+  // Leaderboard state
+  const [leaderboardScores, setLeaderboardScores] = useState<{ name: string; score: number }[]>([]);
 
   // Effect to update the state once the ref is populated
   useEffect(() => {
@@ -164,6 +207,21 @@ const App: React.FC = () => {
     localStorage.setItem('simpleMode', enabled ? 'true' : 'false');
   };
   
+  // Update leaderboard when ROM changes
+  useEffect(() => {
+    if (romTitle) {
+      setLeaderboardScores(getHighScores(romTitle));
+    }
+  }, [romTitle]);
+
+  // Function to handle new high score (call this when a game ends or score is updated)
+  const handleNewScore = useCallback((score: number) => {
+    if (!romTitle) return;
+    const name = prompt('New High Score! Enter your name:') || 'Player';
+    saveHighScore(romTitle, name, score);
+    setLeaderboardScores(getHighScores(romTitle));
+  }, [romTitle]);
+
   return (
     <EmulatorProvider canvasElement={canvasElement}>
       <AIProvider currentRomTitle={romTitle}> {/* Wrap with AIProvider */}
@@ -250,6 +308,9 @@ const App: React.FC = () => {
                     Show AI Console
                   </button>
                 </div>
+                
+                {/* Leaderboard Panel */}
+                <LeaderboardPanel scores={leaderboardScores} />
                 
                 {/* Status Display Panel */}
                 <div className="panel">

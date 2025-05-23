@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useOpenRouterModels } from '../hooks/useOpenRouterModels';
 import { useAI } from '../context/AIContext';
 import { ModelOption } from '../types';
@@ -9,7 +9,7 @@ interface ConfigPanelProps {
 }
 
 const ConfigPanel: React.FC<ConfigPanelProps> = ({ onAiStatusChange, onConfigChange }) => {
-  const { aiConfig, isEnabled, setAiConfig } = useAI();
+  const { aiConfig, isEnabled } = useAI();
 
   const [apiKey, setApiKey] = useState(aiConfig.apiKey || '');
   const [captureInterval, setCaptureInterval] = useState(aiConfig.captureInterval || 2000);
@@ -57,21 +57,15 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ onAiStatusChange, onConfigCha
     } else if (apiKey.length >= 20) {
       setApiKeyStatus('valid');
       setApiKeyMessage('API key format valid.'); // Simplified message
-      localStorage.setItem('aiApiKey', apiKey);
+      localStorage.setItem('aiApiKey', apiKey); // Save valid API key immediately
     } else {
       // This case should ideally be caught by !apiKey, but as a fallback:
       setApiKeyStatus('unchecked');
       setApiKeyMessage(null);
     }
-  }, [apiKey, setModelName]); // Added setModelName to dependency array
+  }, [apiKey, setModelName]);
 
-  const debouncedOnConfigChange = useCallback(
-    (newConfig: any) => {
-      onConfigChange(newConfig);
-      setAiConfig(newConfig);
-    },
-    [onConfigChange, setAiConfig]
-  );
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const newConfig = {
@@ -80,8 +74,19 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ onAiStatusChange, onConfigCha
       captureInterval,
       gameContext
     };
-    debouncedOnConfigChange(newConfig);
-  }, [apiKey, modelName, captureInterval, gameContext, debouncedOnConfigChange]);
+    // Debounce the config change
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+    }
+    debounceTimeout.current = setTimeout(() => {
+      onConfigChange(newConfig);
+    }, 300);
+    return () => {
+      if (debounceTimeout.current) {
+        clearTimeout(debounceTimeout.current);
+      }
+    };
+  }, [apiKey, modelName, captureInterval, gameContext, onConfigChange]);
 
   const toggleAI = () => {
     onAiStatusChange(isEnabled ? 'Inactive' : 'Active');
