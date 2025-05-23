@@ -24,9 +24,10 @@ export class Gameboy {
   constructor() {
     // Reset mocks for each new instance if necessary, or manage state in mockGameboy
     Object.assign(this, mockGameboy);
-    this.cpu = { ...mockGameboy.cpu }; // Ensure cpu state is fresh for each instance
-    this.input = { ...mockGameboy.input };
-    this.cartridge = { ...mockGameboy.cartridge };
+    // Cast to any to bypass readonly checks for mock purposes
+    (this as any).cpu = { ...mockGameboy.cpu }; // Ensure cpu state is fresh for each instance
+    (this as any).input = { ...mockGameboy.input };
+    (this as any).cartridge = { ...mockGameboy.cartridge };
 
     // Clear mock function calls for new instances
     mockGameboy.loadGame.mockClear();

@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useOpenRouterModels } from '../hooks/useOpenRouterModels';
 import { useAI } from '../context/AIContext';
-import ModelSelectionModal from './ModelSelectionModal';
 import { ModelOption } from '../types';
 
 interface ConfigPanelProps {
@@ -10,75 +9,82 @@ interface ConfigPanelProps {
 }
 
 const ConfigPanel: React.FC<ConfigPanelProps> = ({ onAiStatusChange, onConfigChange }) => {
-  // Get AI Context
-  const { aiConfig, isEnabled } = useAI();
+  const { aiConfig, isEnabled, setAiConfig } = useAI();
 
-  // Local state for API key and capture interval
   const [apiKey, setApiKey] = useState(aiConfig.apiKey || '');
   const [captureInterval, setCaptureInterval] = useState(aiConfig.captureInterval || 2000);
   const [gameContext, setGameContext] = useState(aiConfig.gameContext || '');
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [apiKeyStatus, setApiKeyStatus] = useState<'unchecked' | 'valid' | 'invalid'>(
-    apiKey ? 'valid' : 'unchecked'
+    aiConfig.apiKey ? 'valid' : 'unchecked'
   );
+  const [apiKeyMessage, setApiKeyMessage] = useState<string | null>(null);
 
-  // Create default vision models
   const defaultVisionModels: ModelOption[] = [
     { id: 'anthropic/claude-3-opus-20240229', name: 'Claude 3 Opus', hasVision: true },
     { id: 'anthropic/claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', hasVision: true },
     { id: 'google/gemini-1.5-flash-preview', name: 'Gemini 1.5 Flash', hasVision: true }
   ];
 
-  // Get models from OpenRouter
   const { allModels, isLoadingModels, modelName, setModelName } = useOpenRouterModels(
     apiKey,
     apiKeyStatus,
     defaultVisionModels
   );
-
-  // Find the currently selected model
+  // Find the currently selected model - RE-ADD THIS
   const selectedModel = allModels.find(model => model.id === modelName);
 
-  // Update selected model
   const handleSelectModel = (modelId: string) => {
     setModelName(modelId);
     localStorage.setItem('aiModelName', modelId);
   };
 
-  // Update config when main inputs change
   useEffect(() => {
-    onConfigChange({
+    if (!apiKey) {
+      setApiKeyStatus('unchecked');
+      setApiKeyMessage(null);
+      localStorage.removeItem('aiApiKey');
+      setModelName(''); // Clear model name
+      localStorage.removeItem('aiModelName'); // Clear model name from storage
+      return;
+    }
+
+    if (apiKey.length > 0 && apiKey.length < 20) {
+      setApiKeyStatus('invalid');
+      setApiKeyMessage('API key must be at least 20 characters long.');
+      localStorage.removeItem('aiApiKey');
+      // setModelName(''); // Optionally clear model if key is invalid
+      // localStorage.removeItem('aiModelName');
+    } else if (apiKey.length >= 20) {
+      setApiKeyStatus('valid');
+      setApiKeyMessage('API key format valid.'); // Simplified message
+      localStorage.setItem('aiApiKey', apiKey);
+    } else {
+      // This case should ideally be caught by !apiKey, but as a fallback:
+      setApiKeyStatus('unchecked');
+      setApiKeyMessage(null);
+    }
+  }, [apiKey, setModelName]); // Added setModelName to dependency array
+
+  const debouncedOnConfigChange = useCallback(
+    (newConfig: any) => {
+      onConfigChange(newConfig);
+      setAiConfig(newConfig);
+    },
+    [onConfigChange, setAiConfig]
+  );
+
+  useEffect(() => {
+    const newConfig = {
       apiKey,
       modelName: modelName || '',
       captureInterval,
       gameContext
-    });
-  }, [apiKey, modelName, captureInterval, gameContext, onConfigChange]);
-
-  // Format the label for validation feedback
-  const getKeyValidationMessage = () => {
-    if (!apiKey) return null;
-    
-    // Simple validation - just check if key looks like a valid API key
-    if (apiKey.length < 20) {
-      setApiKeyStatus('invalid');
-      return <p className="text-red-500 text-sm">API key is too short</p>;
-    }
-    
-    setApiKeyStatus('valid');
-    return <p className="text-green-500 text-sm">API key is valid.</p>;
-  };
+    };
+    debouncedOnConfigChange(newConfig);
+  }, [apiKey, modelName, captureInterval, gameContext, debouncedOnConfigChange]);
 
   const toggleAI = () => {
     onAiStatusChange(isEnabled ? 'Inactive' : 'Active');
-  };
-
-  const openModal = () => {
-    setIsModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
   };
 
   return (
@@ -93,7 +99,9 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ onAiStatusChange, onConfigCha
             type="password"
             className="input-field pr-10"
             value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
+            onChange={(e) => {
+              setApiKey(e.target.value); // Only set API key here
+            }}
             placeholder="Enter your OpenRouter API key"
           />
           <button
@@ -109,27 +117,44 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ onAiStatusChange, onConfigCha
             </svg>
           </button>
         </div>
-        {getKeyValidationMessage()}
+        {/* Display API key validation message */}
+        {apiKeyMessage && (
+          <p className={`text-sm mt-1 ${
+            apiKeyStatus === 'invalid' ? 'text-red-500' :
+            apiKeyStatus === 'valid' ? 'text-green-500' :
+            'text-yellow-500' /* For 'unchecked' if it has a message */
+          }`}>
+            {apiKeyMessage}
+          </p>
+        )}
       </div>
 
       {/* Model selection */}
       <div className="mb-4">
-        <label className="block text-sm font-medium mb-1">
+        <label htmlFor="ai-model-select" className="block text-sm font-medium mb-1">
           AI Model:
         </label>
-        <button
-          className="input-field text-left flex justify-between items-center"
-          onClick={openModal}
-          disabled={!apiKey}
+        <select
+          id="ai-model-select"
+          className="input-field"
+          value={modelName || ''}
+          onChange={(e) => handleSelectModel(e.target.value)}
+          disabled={!apiKey || isLoadingModels || apiKeyStatus !== 'valid'} // Ensure apiKey is valid before enabling
         >
-          <span className={!selectedModel ? "text-gray-500" : ""}>
-            {selectedModel ? selectedModel.name : 'Select a model'}
-          </span>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-        {isLoadingModels && <p className="text-sm text-blue-400">Loading models...</p>}
+          {isLoadingModels && <option value="">Loading models...</option>}
+          {!isLoadingModels && allModels.length === 0 && apiKeyStatus === 'valid' && (
+            <option value="">No models found for this API key.</option>
+          )}
+          {!isLoadingModels && allModels.length === 0 && apiKeyStatus !== 'valid' && (
+            <option value="">Enter a valid API key to load models.</option>
+          )}
+          {allModels.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.name} {model.hasVision ? '(Vision)' : ''}
+            </option>
+          ))}
+        </select>
+        {isLoadingModels && apiKeyStatus === 'valid' && <p className="text-sm text-blue-400">Loading models...</p>}
       </div>
 
       {/* Capture interval */}
@@ -167,31 +192,24 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ onAiStatusChange, onConfigCha
         </p>
       </div>
 
-      {/* AI Control */}
-      <div className="mt-6">
+      {/* AI Active Toggle Button */}
+      <div className="mb-4">
         <button
           onClick={toggleAI}
-          disabled={!selectedModel || !apiKey}
-          className={`w-full py-2 px-4 font-medium rounded-md ${
-            isEnabled
-              ? 'bg-red-600 hover:bg-red-700 text-white'
-              : 'bg-green-600 hover:bg-green-700 text-white'
-          } transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`w-full py-2 px-4 rounded font-semibold transition-colors
+            ${isEnabled && apiKeyStatus === 'valid' && selectedModel
+              ? 'bg-green-500 hover:bg-green-600 text-white'
+              : 'bg-gray-600 hover:bg-gray-500 text-gray-300 cursor-not-allowed'}`}
+          disabled={!apiKey || apiKeyStatus !== 'valid' || !selectedModel}
         >
           {isEnabled ? 'Deactivate AI' : 'Activate AI'}
         </button>
+        {(!apiKey || apiKeyStatus !== 'valid' || !selectedModel) && (
+          <p className="text-xs text-yellow-400 mt-1">
+            Please enter a valid API key and select a model to activate AI.
+          </p>
+        )}
       </div>
-
-      {/* Modal for model selection */}
-      <ModelSelectionModal
-        isOpen={isModalOpen}
-        onClose={closeModal}
-        models={allModels}
-        onModelSelect={handleSelectModel}
-        currentModelId={modelName}
-        isLoading={isLoadingModels}
-        apiKeyStatus={apiKeyStatus}
-      />
     </div>
   );
 };

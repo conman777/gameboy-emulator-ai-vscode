@@ -1,5 +1,5 @@
 import { EmulatorWrapper } from './EmulatorWrapper';
-import { Gameboy, mockGameboy } from 'gameboy-emulator'; // Imports from the mock
+import { Gameboy, mockGameboy } from './__mocks__/gameboy-emulator'; // Corrected import path
 
 // Mock the entire gameboy-emulator module
 jest.mock('gameboy-emulator');

@@ -39,7 +39,7 @@ const initDB = (): Promise<IDBDatabase> => {
   return dbPromise;
 };
 
-export const saveRom = async (romData: ArrayBuffer, romName: string): Promise<void> => {
+export const saveRomToStorage = async (romName: string, romData: ArrayBuffer): Promise<void> => {
   try {
     const db = await initDB();
     const transaction = db.transaction(STORE_NAME, 'readwrite');
@@ -100,7 +100,7 @@ export const clearRom = async (): Promise<void> => {
 
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
-        console.log('ROM cleared from IndexedDB');
+        console.log('ROM cleared from IndexedDB.');
         resolve();
       };
       transaction.onerror = (event) => {
@@ -112,33 +112,4 @@ export const clearRom = async (): Promise<void> => {
     console.error('Failed to initiate DB for clearing ROM:', error);
     throw error; // Re-throw to be caught by caller
   }
-};
-
-// Add these required functions for compatibility with Controls.tsx
-
-export const loadLastRom = async (emulator: any): Promise<boolean> => {
-  try {
-    // Get ROM from storage
-    const storedRom = await getRom();
-    
-    if (!storedRom || !storedRom.data) {
-      return false;
-    }
-    
-    // If emulator provided, load the ROM
-    if (emulator) {
-      const result = await emulator.loadROM(storedRom.data);
-      return result.success;
-    }
-    
-    // If no emulator, just indicate we have a ROM
-    return true;
-  } catch (error) {
-    console.error('Error loading last ROM:', error);
-    return false;
-  }
-};
-
-export const clearStoredRom = async (): Promise<void> => {
-  return clearRom();
 };

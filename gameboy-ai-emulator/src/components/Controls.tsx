@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useEmulator } from "../context/EmulatorContext";
-import { saveRom, getRom, clearRom, StoredRom } from "../services/StorageService"; // Added clearRom import
+// Renamed saveRom to saveRomToStorage to avoid conflict
+import { saveRomToStorage, getRom, clearRom, StoredRom } from "../services/StorageService"; 
 import { GameBoyButton } from "../types"; // Import GameBoyButton type
 
 // Define the props interface
@@ -142,30 +143,27 @@ const Controls: React.FC<ControlsProps> = ({
     const file = e.target.files?.[0];
     if (!file || !emulator) return;
 
-    // If a ROM is already loaded, stop the emulator before loading a new one
     if (romLoaded && emulator) {
       emulator.stop();
     }
     
-    setRomFile(file); // Store the full File object when selected by user
+    setRomFile(file);
       try {
       const romArrayBuffer: ArrayBuffer = await file.arrayBuffer();
-      // const success = emulator.loadRom(new Uint8Array(arrayBuffer)); // Original erroneous line
-      const result = await emulator.loadROM(romArrayBuffer); // Corrected: pass arrayBuffer directly
+      const result = await emulator.loadROM(romArrayBuffer);
       
       if (result.success) {
         setRomLoaded(true);
-        // const romTitle = emulator.getRomTitle(); // Original erroneous line
-        const romTitle = result.title || file.name; // Corrected: get title from result
+        const romTitle = result.title || file.name;
         setStatus(`Loaded: ${romTitle}`);
         if (onRomTitleChange) onRomTitleChange(romTitle);
         updateStatus('Ready');
-        if (onError) onError(null); // Clear any previous errors        // Only save ROM if auto-load is enabled
+        if (onError) onError(null);
         if (autoLoadRomEnabled) {
-          // TODO: Fix TypeScript error with saveRom function call
-          // await saveRom(romArrayBuffer, file.name); // Save ROM to IndexedDB with data and name
+          // Use the renamed function saveRomToStorage
+          await saveRomToStorage(file.name, romArrayBuffer); 
           setHasStoredRom(true);
-          console.log("ROM saving temporarily disabled due to TypeScript error");
+          console.log("ROM saved to IndexedDB:", file.name);
         }
       } else {
         setRomLoaded(false);
