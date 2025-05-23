@@ -1,0 +1,1 @@
+export const ERROR_MESSAGE_DURATION = 10000;

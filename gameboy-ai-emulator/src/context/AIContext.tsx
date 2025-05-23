@@ -1,24 +1,27 @@
 // AIContext.tsx - Context for AI control and prompt handling
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useEmulator } from './EmulatorContext';
-import { getGameAction, sendCustomPrompt as sendCustomPromptService } from '../services/AIService'; // Aliased import
-import { GameBoyButton } from '../types';
+import { getGameAction, sendCustomPrompt as sendCustomPromptService } from '../services/AIService';
+import { GameBoyButton, AIConfig as AIConfigType } from '../types'; // Import AIConfigType
+import { EmulatorWrapperApi } from '../emulator/EmulatorWrapper'; // Import EmulatorWrapperApi
 
-type AIStatus = 'Inactive' | 'Active' | 'Error';
+export type AIStatus = 'Inactive' | 'Active' | 'Error'; // Export AIStatus
+export type { AIConfigType as AIConfig }; // Export AIConfigType as AIConfig
 
 interface AIContextType {
   aiStatus: AIStatus;
   aiThought: string | null;
   lastAction: GameBoyButton | 'none' | null;
+  lastTenActions: (GameBoyButton | 'none')[]; // Add lastTenActions
+  aiConfig: AIConfigType; // Use AIConfigType
+  maxTokensForAI: number; // Add maxTokensForAI
   isEnabled: boolean;
   setIsEnabled: (enabled: boolean) => void;
-  setApiConfig: (config: {
-    apiKey: string;
-    modelName: string;
-    captureInterval: number;
-    gameContext: string;
-  }) => void;
-  sendCustomPrompt: (prompt: string) => Promise<void>;
+  setAiConfig: React.Dispatch<React.SetStateAction<AIConfigType>>; // Update type to allow functional updates
+  setMaxTokensForAI: (tokens: number) => void; // Add setter for maxTokensForAI
+  sendCustomPrompt: (prompt: string, currentRomTitle: string | null) => Promise<void>; // Add currentRomTitle
+  addLastAction: (action: GameBoyButton | 'none') => void; // Add function to add actions
+  setAiThought: (thought: string | null) => void; // Expose setAiThought
 }
 
 // Create context with default values
@@ -26,53 +29,74 @@ const AIContext = createContext<AIContextType>({
   aiStatus: 'Inactive',
   aiThought: null,
   lastAction: null,
+  lastTenActions: [],
+  aiConfig: { apiKey: '', modelName: '', captureInterval: 2000, isActive: false, gameContext: '' },
+  maxTokensForAI: 300,
   isEnabled: false,
   setIsEnabled: () => {},
-  setApiConfig: () => {},
+  setAiConfig: () => {}, // This will be properly typed by React.Dispatch
+  setMaxTokensForAI: () => {},
   sendCustomPrompt: async () => {},
+  addLastAction: () => {},
+  setAiThought: () => {},
 });
 
 export const useAI = () => useContext(AIContext);
 
 interface AIProviderProps {
   children: React.ReactNode;
+  currentRomTitle: string | null; // Pass romTitle from App.tsx
 }
 
-export const AIProvider: React.FC<AIProviderProps> = ({ children }) => {
+export const AIProvider: React.FC<AIProviderProps> = ({ children, currentRomTitle }) => {
   const emulator = useEmulator();
   
   // State
   const [aiStatus, setAiStatus] = useState<AIStatus>('Inactive');
   const [isEnabled, setIsEnabled] = useState(false);
-  const [aiThought, setAiThought] = useState<string | null>(null);
+  const [aiThought, setAiThoughtState] = useState<string | null>(null); // Renamed to avoid conflict
   const [lastAction, setLastAction] = useState<GameBoyButton | 'none' | null>(null);
-  
-  // Config
-  const [apiKey, setApiKey] = useState('');
-  const [modelName, setModelName] = useState('');
-  const [captureInterval, setCaptureInterval] = useState(2000);
-  const [gameContext, setGameContext] = useState('');
+  const [lastTenActions, setLastTenActions] = useState<(GameBoyButton | 'none')[]>([]);
+  const [aiConfig, setAiConfigState] = useState<AIConfigType>({
+    apiKey: '',
+    modelName: '',
+    captureInterval: 2000,
+    isActive: false,
+    gameContext: ''
+  });
+  const [maxTokensForAI, setMaxTokensForAIState] = useState(300);
   
   // References
-  const intervalRef = React.useRef<NodeJS.Timeout | null>(null);
-  const isProcessingRef = React.useRef(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isProcessingRef = useRef(false);
+
+  // Expose setAiThought
+  const setAiThought = useCallback((thought: string | null) => {
+    setAiThoughtState(thought);
+  }, []);
   
-  // Set API configuration
-  const setApiConfig = (config: {
-    apiKey: string;
-    modelName: string;
-    captureInterval: number;
-    gameContext: string;
-  }) => {
-    setApiKey(config.apiKey);
-    setModelName(config.modelName);
-    setCaptureInterval(config.captureInterval);
-    setGameContext(config.gameContext);
-  };
+  // Set AI configuration
+  const setAiConfig = useCallback((configOrFn: React.SetStateAction<AIConfigType>) => {
+    setAiConfigState(configOrFn);
+  }, []);
+
+  // Set maxTokensForAI
+  const setMaxTokensForAI = useCallback((tokens: number) => {
+    setMaxTokensForAIState(tokens);
+  }, []);
+
+  // Add last action to the list
+  const addLastAction = useCallback((action: GameBoyButton | 'none') => {
+    setLastTenActions(prev => {
+      const newActions = [...prev];
+      newActions.push(action);
+      return newActions.slice(-10); // Keep only the last 10 actions
+    });
+  }, []);
   
   // AI cycle function
-  const runAICycle = React.useCallback(async () => {
-    if (!emulator || isProcessingRef.current || !isEnabled) {
+  const runAICycle = useCallback(async () => {
+    if (!emulator || isProcessingRef.current || !isEnabled || !aiConfig.apiKey || !aiConfig.modelName) {
       return;
     }
 
@@ -87,12 +111,15 @@ export const AIProvider: React.FC<AIProviderProps> = ({ children }) => {
       // Get screenshot
       let imageData: string | null = null;
       
-      if (typeof (emulator as any).captureScreenshot === 'function') {
-        imageData = (emulator as any).captureScreenshot();
+      // Ensure emulator.captureScreenshot and emulator.getScreenDataAsBase64 are correctly typed
+      const typedEmulator = emulator as EmulatorWrapperApi;
+
+      if (typeof typedEmulator.captureScreenshot === 'function') {
+        imageData = typedEmulator.captureScreenshot();
       }
       
       if (!imageData) {
-        imageData = await emulator.getScreenDataAsBase64();
+        imageData = await typedEmulator.getScreenDataAsBase64();
       }
       
       if (!imageData) {
@@ -105,13 +132,11 @@ export const AIProvider: React.FC<AIProviderProps> = ({ children }) => {
       // Get AI action
       const result = await getGameAction(
         imageData, 
-        modelName, 
-        apiKey, 
-        gameContext, 
-        // TODO: Get maxTokens from context or props
-        300, // Placeholder for maxTokens
-        // TODO: Get romTitle from context or props
-        "" // Placeholder for romTitle, changed from null to empty string
+        aiConfig.modelName, 
+        aiConfig.apiKey, 
+        aiConfig.gameContext, 
+        maxTokensForAI,
+        currentRomTitle || "" // Pass currentRomTitle
       );
       
       if (result.action === 'error') {
@@ -119,14 +144,15 @@ export const AIProvider: React.FC<AIProviderProps> = ({ children }) => {
         setAiStatus('Error');
       } else {
         // Set thought and action
-        setAiThought(result.aiThought || null);
+        setAiThoughtState(result.aiThought || null);
         setLastAction(result.action);
         
         if (result.action !== 'none') {
+          addLastAction(result.action); // Add action to history
           // Press the button
-          emulator.pressButton(result.action);
+          typedEmulator.pressButton(result.action);
           setTimeout(() => {
-            emulator.releaseButton(result.action as GameBoyButton);
+            typedEmulator.releaseButton(result.action as GameBoyButton);
           }, 100);
         }
         
@@ -138,11 +164,11 @@ export const AIProvider: React.FC<AIProviderProps> = ({ children }) => {
     } finally {
       isProcessingRef.current = false;
     }
-  }, [emulator, apiKey, modelName, isEnabled, gameContext]);
+  }, [emulator, isEnabled, aiConfig, maxTokensForAI, currentRomTitle, addLastAction]);
   
   // Custom prompt handling
-  const sendCustomPrompt = async (prompt: string) => {
-    if (!emulator || !isEnabled || !apiKey || !modelName) {
+  const sendCustomPrompt = useCallback(async (prompt: string, currentRomTitle: string | null) => {
+    if (!emulator || !isEnabled || !aiConfig.apiKey || !aiConfig.modelName) {
       console.warn('AI: Cannot send prompt - AI not active or missing configuration.');
       return;
     }
@@ -150,13 +176,14 @@ export const AIProvider: React.FC<AIProviderProps> = ({ children }) => {
     try {
       // Get screenshot
       let imageData: string | null = null;
+      const typedEmulator = emulator as EmulatorWrapperApi;
       
-      if (typeof (emulator as any).captureScreenshot === 'function') {
-        imageData = (emulator as any).captureScreenshot();
+      if (typeof typedEmulator.captureScreenshot === 'function') {
+        imageData = typedEmulator.captureScreenshot();
       }
       
       if (!imageData) {
-        imageData = await emulator.getScreenDataAsBase64();
+        imageData = await typedEmulator.getScreenDataAsBase64();
       }
       
       if (!imageData) {
@@ -165,19 +192,26 @@ export const AIProvider: React.FC<AIProviderProps> = ({ children }) => {
       }
       
       // Send prompt to AI using the aliased service function
-      const result = await sendCustomPromptService(imageData, modelName, apiKey, prompt, gameContext);
-      setAiThought(result.aiThought);
+      const result = await sendCustomPromptService(
+        imageData, 
+        aiConfig.modelName, 
+        aiConfig.apiKey, 
+        prompt, 
+        aiConfig.gameContext,
+        [currentRomTitle || ""] // Ensure this is an array of strings
+      );
+      setAiThoughtState(result.aiThought);
       setLastAction(null);
       
     } catch (error: any) {
       console.error('AI: Error processing custom prompt:', error);
     }
-  };
+  }, [emulator, isEnabled, aiConfig, setAiThoughtState]);
   
   // Start/stop AI interval based on state
   useEffect(() => {
     if (isEnabled && emulator?.isRunning()) {
-      if (!apiKey || !modelName) {
+      if (!aiConfig.apiKey || !aiConfig.modelName) {
         console.warn('AI: Cannot start - API Key or Model Name missing.');
         setAiStatus('Error');
         return;
@@ -189,7 +223,7 @@ export const AIProvider: React.FC<AIProviderProps> = ({ children }) => {
         
         // Run immediately first time
         runAICycle();
-        intervalRef.current = setInterval(runAICycle, captureInterval);
+        intervalRef.current = setInterval(runAICycle, aiConfig.captureInterval);
       }
     } else {
       if (intervalRef.current !== null) {
@@ -213,17 +247,23 @@ export const AIProvider: React.FC<AIProviderProps> = ({ children }) => {
         isProcessingRef.current = false;
       }
     };
-  }, [isEnabled, emulator, runAICycle, apiKey, modelName, captureInterval]);
+  }, [isEnabled, emulator, runAICycle, aiConfig]);
   
   // Provide context value
   const contextValue: AIContextType = {
     aiStatus,
-    aiThought,
+    aiThought: aiThought, // Corrected: use aiThought state variable
     lastAction,
+    lastTenActions,
+    aiConfig,
+    maxTokensForAI,
     isEnabled,
     setIsEnabled,
-    setApiConfig,
-    sendCustomPrompt
+    setAiConfig,
+    setMaxTokensForAI,
+    sendCustomPrompt,
+    addLastAction,
+    setAiThought,
   };
 
   return (
@@ -232,5 +272,3 @@ export const AIProvider: React.FC<AIProviderProps> = ({ children }) => {
     </AIContext.Provider>
   );
 };
-
-export {};

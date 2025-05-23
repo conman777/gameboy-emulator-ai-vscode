@@ -1,3 +1,211 @@
+/* Base app styles */
+body {
+  background-color: #1a1a1a;
+  color: white;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+.App {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Darker, cleaner UI styles */
+.panel {
+  background-color: #212121;
+  border-radius: 12px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel-title {
+  font-size: 1.25rem;
+  font-weight: 500;
+  margin-bottom: 16px;
+  color: white;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: #eeeeee;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Button styles */
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border: none;
+}
+
+.btn-primary {
+  background-color: #10b981;
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: #059669;
+}
+
+.btn-secondary {
+  background-color: #4b5563;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background-color: #374151;
+}
+
+/* Form input styles */
+.input-field {
+  width: 100%;
+  padding: 10px 12px;
+  background-color: #333333;
+  border: 1px solid #444444;
+  border-radius: 6px;
+  color: white;
+  margin-bottom: 12px;
+}
+
+.input-field:focus {
+  border-color: #10b981;
+  outline: none;
+}
+
+/* Game Boy screen container */
+.game-screen {
+  background-color: #1c1c1c;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+/* Controls */
+.d-pad-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 4px;
+  max-width: 150px;
+  margin: 16px auto;
+}
+
+.d-pad-btn {
+  width: 40px;
+  height: 40px;
+  background-color: #333333;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.d-pad-btn:hover {
+  background-color: #444444;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.action-btn {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background-color: #333333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.action-btn:hover {
+  background-color: #444444;
+}
+
+/* Two-column layout for desktop */
+.main-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+@media (min-width: 1024px) {
+  .main-container {
+    flex-direction: row;
+    gap: 16px;
+  }
+  
+  .left-column {
+    flex: 2;
+  }
+  
+  .right-column {
+    flex: 1;
+  }
+}
+
+/* AI Console styling */
+.ai-console {
+  background-color: #212121;
+  border-radius: 12px;
+  padding: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.ai-thought {
+  background-color: #2d2d2d;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.ai-input {
+  display: flex;
+  margin-top: 8px;
+}
+
+.ai-input input {
+  flex: 1;
+  padding: 8px 10px;
+  background-color: #333333;
+  border: 1px solid #444444;
+  border-radius: 6px 0 0 6px;
+  color: white;
+}
+
+.ai-input button {
+  padding: 8px 12px;
+  background-color: #10b981;
+  color: white;
+  border: none;
+  border-radius: 0 6px 6px 0;
+  cursor: pointer;
+}
+
+.ai-input button:hover {
+  background-color: #059669;
+}
+
 .App {
   text-align: center;
 }
